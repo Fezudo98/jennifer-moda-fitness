@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+{% block titulo %}Produtos &amp; Estoque{% endblock %}
+{% block titulo_pagina %}Produtos &amp; Estoque{% endblock %}
+
+{% block conteudo %}
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-wrap gap-2 flex-grow-1">
+        <input type="text" id="busca" class="form-control" style="max-width:280px" placeholder="Buscar por nome, SKU ou código de barras...">
+        <select id="filtro-categoria" class="form-select" style="max-width:200px">
+            <option value="">Todas categorias</option>
+        </select>
+        <div class="form-check align-self-center ms-2">
+            <input class="form-check-input" type="checkbox" id="filtro-estoque-baixo">
+            <label class="form-check-label small text-suave" for="filtro-estoque-baixo">Só estoque baixo</label>
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-jf-outline" id="btn-categorias"><i class="bi bi-tags"></i> Categorias</button>
+        <a href="{{ url_for('produtos.pagina_novo') }}" class="btn btn-jf"><i class="bi bi-plus-lg"></i> Novo Produto</a>
+    </div>
+</div>
+
+<div class="d-none align-items-center gap-2 mb-3 jf-card" id="barra-selecao">
+    <span class="small"><span id="qtd-selecionados">0</span> selecionado(s)</span>
+    <button class="btn btn-sm btn-outline-danger ms-auto" id="btn-excluir-selecionados"><i class="bi bi-trash"></i> Excluir selecionados</button>
+</div>
+
+<div id="lista-produtos"></div>
+<div id="estado-vazio" class="text-center text-suave py-5 d-none">
+    <i class="bi bi-box-seam fs-1"></i>
+    <p class="mt-2">Nenhum produto encontrado.</p>
+</div>
+<nav class="mt-3" aria-label="Paginação de produtos">
+    <ul class="pagination justify-content-center" id="paginacao-produtos"></ul>
+</nav>
+
+<!-- Modal Categorias -->
+<div class="modal fade" id="modal-categorias" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Gerenciar Categorias</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" id="nova-categoria-nome" placeholder="Nova categoria">
+                    <button class="btn btn-jf" id="btn-add-categoria">Adicionar</button>
+                </div>
+                <div id="lista-categorias-modal"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal excluir categoria com migração -->
+<div class="modal fade" id="modal-excluir-categoria" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Excluir Categoria</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-suave">Os produtos desta categoria podem ser migrados para outra ou ficar sem categoria.</p>
+                <label>Migrar produtos para:</label>
+                <select id="select-migrar-categoria" class="form-select mb-3">
+                    <option value="">Deixar sem categoria</option>
+                </select>
+                <div class="jf-card mb-3 py-2 px-3" id="resumo-exclusao-categoria" style="background: var(--jf-bg-elevado)">
+                    <span class="small text-suave">Calculando impacto...</span>
+                </div>
+                <button class="btn btn-jf w-100" id="btn-confirmar-exclusao-categoria">Confirmar exclusão</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let PRODUTOS = [];
+let CATEGORIAS = [];
+let categoriaParaExcluir = null;
+
+async function carregarCategorias() {
+    CATEGORIAS = await JF.api('/produtos/api/categorias');
+    const filtro = document.getElementById('filtro-categoria');
+    filtro.innerHTML = '<option value="">Todas categorias</option>' + CATEGORIAS.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    renderizarModalCategorias();
+}
+
+function renderizarModalCategorias() {
+    const container = document.getElementById('lista-categorias-modal');
+    if (!CATEGORIAS.length) {
+        container.innerHTML = '<p class="text-suave small">Nenhuma categoria cadastrada.</p>';
+        return;
+    }
+    container.innerHTML = CATEGORIAS.map(c => `
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <input type="text" class="form-control form-control-sm" value="${c.nome}" data-id="${c.id}" onchange="renomearCategoria(${c.id}, this.value)">
+            <button class="btn btn-sm btn-outline-danger" onclick="abrirExclusaoCategoria(${c.id})"><i class="bi bi-trash"></i></button>
+        </div>
+    `).join('');
+}
+
+async function renomearCategoria(id, nome) {
+    try {
+        await JF.api(`/produtos/api/categorias/${id}`, { method: 'PUT', body: JSON.stringify({ nome }) });
+        JF.toast('Categoria renomeada.');
+        await carregarCategorias();
+        await carregarProdutos();
+    } catch (e) { JF.erro(e); }
+}
+
+let qtdProdutosCategoriaExcluir = 0;
+
+async function abrirExclusaoCategoria(id) {
+    categoriaParaExcluir = id;
+    const select = document.getElementById('select-migrar-categoria');
+    select.innerHTML = '<option value="">Deixar sem categoria</option>' + CATEGORIAS.filter(c => c.id !== id).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-excluir-categoria')).show();
+
+    const resumo = document.getElementById('resumo-exclusao-categoria');
+    resumo.innerHTML = '<span class="small text-suave">Calculando impacto...</span>';
+    try {
+        const produtos = await JF.api(`/produtos/api?categoria_id=${id}`);
+        qtdProdutosCategoriaExcluir = produtos.length;
+    } catch (e) {
+        qtdProdutosCategoriaExcluir = 0;
+    }
+    atualizarResumoExclusaoCategoria();
+}
+
+function atualizarResumoExclusaoCategoria() {
+    const resumo = document.getElementById('resumo-exclusao-categoria');
+    const select = document.getElementById('select-migrar-categoria');
+    const destinoId = select.value;
+    const verbo = qtdProdutosCategoriaExcluir === 1 ? 'será movido' : 'serão movidos';
+    const ficara = qtdProdutosCategoriaExcluir === 1 ? 'ficará' : 'ficarão';
+
+    if (qtdProdutosCategoriaExcluir === 0) {
+        resumo.innerHTML = '<span class="small text-suave">Nenhum produto cadastrado nesta categoria.</span>';
+        return;
+    }
+    const frase = destinoId
+        ? `${verbo} para <b>"${select.options[select.selectedIndex].text}"</b>`
+        : `${ficara} sem categoria`;
+    resumo.innerHTML = `<span class="small"><i class="bi bi-info-circle text-rosa me-1"></i><b>${qtdProdutosCategoriaExcluir}</b> produto(s) ${frase}.</span>`;
+}
+
+document.getElementById('select-migrar-categoria').addEventListener('change', atualizarResumoExclusaoCategoria);
+
+document.getElementById('btn-confirmar-exclusao-categoria').addEventListener('click', async () => {
+    const migrarPara = document.getElementById('select-migrar-categoria').value;
+    try {
+        const url = `/produtos/api/categorias/${categoriaParaExcluir}` + (migrarPara ? `?migrar_para=${migrarPara}` : '');
+        await JF.api(url, { method: 'DELETE' });
+        JF.toast('Categoria excluída.');
+        bootstrap.Modal.getInstance(document.getElementById('modal-excluir-categoria')).hide();
+        await carregarCategorias();
+        await carregarProdutos();
+    } catch (e) { JF.erro(e); }
+});
+
+document.getElementById('btn-add-categoria').addEventListener('click', async () => {
+    const input = document.getElementById('nova-categoria-nome');
+    if (!input.value.trim()) return;
+    try {
+        await JF.api('/produtos/api/categorias', { method: 'POST', body: JSON.stringify({ nome: input.value.trim() }) });
+        input.value = '';
+        JF.toast('Categoria criada.');
+        await carregarCategorias();
+    } catch (e) { JF.erro(e); }
+});
+
+document.getElementById('btn-categorias').addEventListener('click', () => {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-categorias')).show();
+});
+
+function badgeEstoque(v) {
+    if (v.estoque_baixo) return `<span class="badge-jf badge-vermelho">${v.quantidade} un. · baixo</span>`;
+    return `<span class="badge-jf badge-verde">${v.quantidade} un.</span>`;
+}
+
+function renderizarProdutos() {
+    const container = document.getElementById('lista-produtos');
+    const vazio = document.getElementById('estado-vazio');
+    if (!PRODUTOS.length) {
+        container.innerHTML = '';
+        vazio.classList.remove('d-none');
+        return;
+    }
+    vazio.classList.add('d-none');
+
+    container.innerHTML = PRODUTOS.map(p => `
+        <div class="jf-card mb-3">
+            <div class="d-flex align-items-start gap-3">
+                <input type="checkbox" class="form-check-input mt-2 checkbox-produto" value="${p.id}" onchange="atualizarSelecao()">
+                ${p.imagem_capa ? `<img src="/static/${p.imagem_capa}" alt="Foto de ${p.nome}" onerror="this.style.display='none'" style="width:56px;height:56px;object-fit:cover;border-radius:10px;background:var(--jf-bg-elevado)">` : `<div style="width:56px;height:56px;border-radius:10px;background:var(--jf-bg-elevado)" aria-hidden="true"></div>`}
+                <div class="flex-grow-1">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <div class="fw-semibold">${p.nome}</div>
+                            <div class="small text-suave">${p.categoria_nome || 'Sem categoria'} · ${p.variacoes.length} variação(ões)</div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="/produtos/${p.id}/editar" class="btn btn-sm btn-jf-outline"><i class="bi bi-pencil"></i> Editar</a>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirProduto(${p.id})"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                    <div class="table-responsive mt-3">
+                        <table class="jf-tabela">
+                            <thead><tr><th>Cor</th><th>Tam.</th><th>SKU</th><th>Preço</th><th>Estoque</th></tr></thead>
+                            <tbody>
+                            ${p.variacoes.map(v => `
+                                <tr>
+                                    <td><span class="jf-swatch" style="background:${v.cor_hex || '#999'}"></span> ${v.cor}</td>
+                                    <td>${v.tamanho}</td>
+                                    <td class="text-suave">${v.sku}</td>
+                                    <td>
+                                        <input type="text" class="form-control form-control-sm" style="width:110px" value="${v.preco_venda.toFixed(2)}"
+                                               onchange="editarRapido(${v.id}, 'preco_venda', this.value)">
+                                    </td>
+                                    <td>
+                                        <input type="number" min="0" class="form-control form-control-sm d-inline-block" style="width:80px" value="${v.quantidade}"
+                                               onchange="editarRapido(${v.id}, 'quantidade', this.value)">
+                                        ${badgeEstoque(v)}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function editarRapido(variacaoId, campo, valor) {
+    try {
+        const body = {};
+        body[campo] = campo === 'quantidade' ? parseInt(valor) : parseFloat(valor.replace(',', '.'));
+        await JF.api(`/produtos/api/variacoes/${variacaoId}/rapido`, { method: 'PATCH', body: JSON.stringify(body) });
+        JF.toast('Atualizado.');
+        await carregarProdutos();
+    } catch (e) { JF.erro(e); }
+}
+
+async function excluirProduto(id) {
+    if (!(await JF.confirmar('Excluir este produto? O histórico de vendas será mantido.', { perigo: true }))) return;
+    try {
+        await JF.api(`/produtos/api/${id}`, { method: 'DELETE' });
+        JF.toast('Produto excluído.');
+        await carregarProdutos();
+    } catch (e) { JF.erro(e); }
+}
+
+function atualizarSelecao() {
+    const marcados = document.querySelectorAll('.checkbox-produto:checked');
+    document.getElementById('barra-selecao').classList.toggle('d-none', marcados.length === 0);
+    document.getElementById('barra-selecao').classList.toggle('d-flex', marcados.length > 0);
+    document.getElementById('qtd-selecionados').textContent = marcados.length;
+}
+
+document.getElementById('btn-excluir-selecionados').addEventListener('click', async () => {
+    const ids = Array.from(document.querySelectorAll('.checkbox-produto:checked')).map(el => parseInt(el.value));
+    if (!ids.length) return;
+    if (!(await JF.confirmar(`Excluir ${ids.length} produto(s) selecionado(s)?`, { perigo: true }))) return;
+    try {
+        await JF.api('/produtos/api/excluir-em-massa', { method: 'POST', body: JSON.stringify({ ids }) });
+        JF.toast('Produtos excluídos.');
+        await carregarProdutos();
+    } catch (e) { JF.erro(e); }
+});
+
+let paginaProdutosAtual = 1;
+
+async function carregarProdutos(pagina = paginaProdutosAtual) {
+    paginaProdutosAtual = pagina;
+    const params = new URLSearchParams();
+    const busca = document.getElementById('busca').value.trim();
+    const categoria = document.getElementById('filtro-categoria').value;
+    const estoqueBaixo = document.getElementById('filtro-estoque-baixo').checked;
+    if (busca) params.set('q', busca);
+    if (categoria) params.set('categoria_id', categoria);
+    if (estoqueBaixo) params.set('estoque_baixo', '1');
+    params.set('pagina', pagina);
+
+    const resposta = await JF.api('/produtos/api?' + params.toString());
+    const paginacaoEl = document.getElementById('paginacao-produtos');
+
+    if (Array.isArray(resposta)) {
+        // Filtro de estoque baixo não é paginável no servidor (ver comentário na API).
+        PRODUTOS = resposta;
+        paginacaoEl.innerHTML = '';
+    } else {
+        PRODUTOS = resposta.itens;
+        JF.renderizarPaginacao(paginacaoEl, resposta.pagina, resposta.paginas, carregarProdutos);
+    }
+    renderizarProdutos();
+}
+
+function recarregarDoInicio() {
+    carregarProdutos(1);
+}
+
+let buscaTimeout;
+document.getElementById('busca').addEventListener('input', () => {
+    clearTimeout(buscaTimeout);
+    buscaTimeout = setTimeout(recarregarDoInicio, 300);
+});
+document.getElementById('filtro-categoria').addEventListener('change', recarregarDoInicio);
+document.getElementById('filtro-estoque-baixo').addEventListener('change', recarregarDoInicio);
+
+carregarCategorias();
+carregarProdutos();
+</script>
+{% endblock %}

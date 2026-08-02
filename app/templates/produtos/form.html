@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block titulo %}{{ 'Editar Produto' if produto_id else 'Novo Produto' }}{% endblock %}
+{% block titulo_pagina %}{{ 'Editar Produto' if produto_id else 'Novo Produto' }}{% endblock %}
+
+{% block conteudo %}
+<a href="{{ url_for('produtos.pagina_lista') }}" class="text-suave small"><i class="bi bi-arrow-left"></i> Voltar para Produtos</a>
+
+<div class="row g-3 mt-1">
+    <div class="col-lg-7">
+        <div class="jf-card mb-3">
+            <h2 class="h6 mb-3">Dados do Produto</h2>
+            <div class="mb-3">
+                <label>Nome do produto</label>
+                <input type="text" class="form-control" id="nome">
+            </div>
+            <div class="mb-3">
+                <label>Categoria</label>
+                <div class="d-flex gap-2">
+                    <select class="form-select" id="categoria_id"><option value="">Sem categoria</option></select>
+                    <button type="button" class="btn btn-jf-outline flex-shrink-0" id="btn-nova-categoria" title="Criar nova categoria"><i class="bi bi-plus-lg"></i></button>
+                </div>
+            </div>
+            <div class="mb-0">
+                <label>Descrição (opcional)</label>
+                <textarea class="form-control" id="descricao" rows="2"></textarea>
+            </div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="h6 mb-0">Variações (cor / tamanho)</h2>
+                <button class="btn btn-sm btn-jf-outline" id="btn-add-variacao"><i class="bi bi-plus-lg"></i> Adicionar variação</button>
+            </div>
+            <div id="lista-variacoes"></div>
+        </div>
+
+        <button class="btn btn-jf w-100" id="btn-salvar"><i class="bi bi-check-lg"></i> Salvar Produto</button>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="jf-card" id="card-imagens">
+            <h2 class="h6 mb-3">Imagens do Produto</h2>
+            <div id="aviso-imagens" class="text-suave small mb-2 {{ '' if produto_id else '' }}"></div>
+            <input type="file" id="input-imagens" class="form-control mb-3" multiple accept="image/*" {{ 'disabled' if not produto_id }}>
+            <div id="grid-imagens" class="d-flex flex-wrap gap-2"></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal-nova-categoria" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nova Categoria</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label>Nome da categoria</label>
+                <input type="text" class="form-control" id="nova-categoria-nome-form" placeholder="Ex: Leggings">
+                <div id="nova-categoria-erro" class="text-danger small mt-2 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-jf-outline" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-jf" id="btn-salvar-nova-categoria">Criar categoria</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUTO_ID = {{ produto_id or 'null' }};
+let variacoes = [];
+let contadorVar = 0;
+let imagensAtuais = [];
+
+function linhaVariacao(v = {}) {
+    contadorVar++;
+    const idLocal = v.id || ('novo-' + contadorVar);
+    return `
+    <div class="row g-2 align-items-end mb-2 pb-2 border-bottom" style="border-color: var(--jf-borda) !important" data-id="${idLocal}">
+        <div class="col-6 col-md-2">
+            <label class="small">Cor</label>
+            <input type="text" class="form-control form-control-sm campo-cor" value="${v.cor || ''}">
+        </div>
+        <div class="col-3 col-md-2">
+            <label class="small">Cor (hex)</label>
+            <input type="color" class="form-control form-control-sm form-control-color campo-cor-hex w-100" value="${v.cor_hex || '#ec4899'}">
+        </div>
+        <div class="col-3 col-md-1">
+            <label class="small">Tam.</label>
+            <input type="text" class="form-control form-control-sm campo-tamanho" value="${v.tamanho || ''}">
+        </div>
+        <div class="col-4 col-md-2">
+            <label class="small">Custo (R$)</label>
+            <input type="text" class="form-control form-control-sm campo-custo" value="${v.preco_custo != null ? v.preco_custo : ''}">
+        </div>
+        <div class="col-4 col-md-2">
+            <label class="small">Venda (R$)</label>
+            <input type="text" class="form-control form-control-sm campo-venda" value="${v.preco_venda != null ? v.preco_venda : ''}">
+        </div>
+        <div class="col-4 col-md-1">
+            <label class="small">Qtd.</label>
+            <input type="number" min="0" class="form-control form-control-sm campo-qtd" value="${v.quantidade != null ? v.quantidade : 0}">
+        </div>
+        <div class="col-6 col-md-1">
+            <label class="small">Mín.</label>
+            <input type="number" min="0" class="form-control form-control-sm campo-min" value="${v.estoque_minimo != null ? v.estoque_minimo : 5}">
+        </div>
+        <div class="col-6 col-md-1 d-flex gap-1">
+            ${v.id ? `<a class="btn btn-sm btn-jf-outline" href="/produtos/api/variacoes/${v.id}/codigo-barras" target="_blank" title="Ver código de barras"><i class="bi bi-upc-scan"></i></a>` : ''}
+            <button type="button" class="btn btn-sm btn-outline-danger btn-remover-variacao"><i class="bi bi-trash"></i></button>
+        </div>
+        ${v.sku ? `<div class="col-12"><span class="text-suave small">SKU: ${v.sku}</span></div>` : ''}
+    </div>`;
+}
+
+function renderizarVariacoes() {
+    document.getElementById('lista-variacoes').innerHTML = variacoes.map(v => linhaVariacao(v)).join('') ||
+        '<p class="text-suave small">Nenhuma variação adicionada. Clique em "Adicionar variação".</p>';
+
+    document.querySelectorAll('.btn-remover-variacao').forEach((btn, idx) => {
+        btn.addEventListener('click', () => {
+            variacoes.splice(idx, 1);
+            renderizarVariacoes();
+        });
+    });
+}
+
+document.getElementById('btn-add-variacao').addEventListener('click', () => {
+    variacoes.push({});
+    renderizarVariacoes();
+});
+
+function coletarVariacoesDoDOM() {
+    const linhas = document.querySelectorAll('#lista-variacoes > div[data-id]');
+    return Array.from(linhas).map(linha => ({
+        id: linha.dataset.id.startsWith('novo-') ? null : parseInt(linha.dataset.id),
+        cor: linha.querySelector('.campo-cor').value.trim(),
+        cor_hex: linha.querySelector('.campo-cor-hex').value,
+        tamanho: linha.querySelector('.campo-tamanho').value.trim(),
+        preco_custo: linha.querySelector('.campo-custo').value,
+        preco_venda: linha.querySelector('.campo-venda').value,
+        quantidade: linha.querySelector('.campo-qtd').value,
+        estoque_minimo: linha.querySelector('.campo-min').value,
+    }));
+}
+
+async function carregarCategorias(selecionarId = null) {
+    const categorias = await JF.api('/produtos/api/categorias');
+    const select = document.getElementById('categoria_id');
+    const atual = selecionarId || select.value;
+    select.innerHTML = '<option value="">Sem categoria</option>' + categorias.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+    if (atual) select.value = atual;
+}
+
+let modalNovaCategoria;
+document.addEventListener('DOMContentLoaded', () => {
+    modalNovaCategoria = new bootstrap.Modal(document.getElementById('modal-nova-categoria'));
+});
+
+document.getElementById('btn-nova-categoria').addEventListener('click', () => {
+    document.getElementById('nova-categoria-nome-form').value = '';
+    document.getElementById('nova-categoria-erro').classList.add('d-none');
+    modalNovaCategoria.show();
+    setTimeout(() => document.getElementById('nova-categoria-nome-form').focus(), 300);
+});
+
+document.getElementById('nova-categoria-nome-form').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('btn-salvar-nova-categoria').click();
+    }
+});
+
+document.getElementById('btn-salvar-nova-categoria').addEventListener('click', async () => {
+    const nome = document.getElementById('nova-categoria-nome-form').value.trim();
+    const erroEl = document.getElementById('nova-categoria-erro');
+    erroEl.classList.add('d-none');
+    if (!nome) {
+        erroEl.textContent = 'Informe o nome da categoria.';
+        erroEl.classList.remove('d-none');
+        return;
+    }
+    try {
+        const categoria = await JF.api('/produtos/api/categorias', { method: 'POST', body: JSON.stringify({ nome }) });
+        await carregarCategorias(categoria.id);
+        modalNovaCategoria.hide();
+        JF.toast(`Categoria "${categoria.nome}" criada e selecionada.`);
+    } catch (e) {
+        erroEl.textContent = e.message;
+        erroEl.classList.remove('d-none');
+    }
+});
+
+async function carregarProduto() {
+    if (!PRODUTO_ID) {
+        variacoes = [{}];
+        renderizarVariacoes();
+        document.getElementById('aviso-imagens').textContent = 'Salve o produto primeiro para poder enviar imagens.';
+        return;
+    }
+    const p = await JF.api(`/produtos/api/${PRODUTO_ID}`);
+    document.getElementById('nome').value = p.nome;
+    document.getElementById('categoria_id').value = p.categoria_id || '';
+    document.getElementById('descricao').value = p.descricao || '';
+    variacoes = p.variacoes;
+    renderizarVariacoes();
+    renderizarImagens(p.imagens);
+    document.getElementById('input-imagens').disabled = false;
+}
+
+function renderizarImagens(imagens) {
+    const grid = document.getElementById('grid-imagens');
+    imagensAtuais = imagens || [];
+    if (!imagens || !imagens.length) {
+        grid.innerHTML = '<p class="text-suave small mb-0">Nenhuma imagem enviada ainda.</p>';
+        return;
+    }
+    grid.innerHTML = imagens.map((img, idx) => `
+        <div class="position-relative" style="width:100px">
+            <img src="/static/${img.caminho}" alt="Foto do produto" style="width:100px;height:100px;object-fit:cover;border-radius:10px;border:2px solid ${img.capa ? 'var(--jf-rosa)' : 'var(--jf-borda)'}">
+            <div class="d-flex justify-content-between mt-1">
+                <button class="btn btn-sm p-0 text-suave" title="Mover para a esquerda" ${idx === 0 ? 'disabled' : ''} onclick="moverImagem(${idx}, -1)"><i class="bi bi-arrow-left"></i></button>
+                <button class="btn btn-sm p-0 text-suave" title="Definir como capa" onclick="definirCapa(${img.id})"><i class="bi bi-star${img.capa ? '-fill text-rosa' : ''}"></i></button>
+                <button class="btn btn-sm p-0 text-danger" title="Remover" onclick="removerImagem(${img.id})"><i class="bi bi-trash"></i></button>
+                <button class="btn btn-sm p-0 text-suave" title="Mover para a direita" ${idx === imagens.length - 1 ? 'disabled' : ''} onclick="moverImagem(${idx}, 1)"><i class="bi bi-arrow-right"></i></button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function definirCapa(id) {
+    await JF.api(`/produtos/api/imagens/${id}/capa`, { method: 'PUT' });
+    await carregarProduto();
+}
+async function removerImagem(id) {
+    if (!(await JF.confirmar('Remover esta imagem?', { perigo: true }))) return;
+    await JF.api(`/produtos/api/imagens/${id}`, { method: 'DELETE' });
+    await carregarProduto();
+}
+async function moverImagem(idx, direcao) {
+    const novaOrdem = imagensAtuais.map(i => i.id);
+    const alvo = idx + direcao;
+    if (alvo < 0 || alvo >= novaOrdem.length) return;
+    [novaOrdem[idx], novaOrdem[alvo]] = [novaOrdem[alvo], novaOrdem[idx]];
+    try {
+        await JF.api('/produtos/api/imagens/reordenar', { method: 'PUT', body: JSON.stringify({ ids: novaOrdem }) });
+        await carregarProduto();
+    } catch (e) { JF.erro(e); }
+}
+
+document.getElementById('input-imagens').addEventListener('change', async (e) => {
+    if (!PRODUTO_ID || !e.target.files.length) return;
+    const formData = new FormData();
+    for (const arquivo of e.target.files) formData.append('imagens', arquivo);
+    try {
+        await JF.api(`/produtos/api/${PRODUTO_ID}/imagens`, { method: 'POST', body: formData });
+        JF.toast('Imagens enviadas.');
+        e.target.value = '';
+        await carregarProduto();
+    } catch (err) { JF.erro(err); }
+});
+
+document.getElementById('btn-salvar').addEventListener('click', async () => {
+    const nome = document.getElementById('nome').value.trim();
+    if (!nome) { JF.toast('Informe o nome do produto.', 'erro'); return; }
+
+    const payload = {
+        nome,
+        categoria_id: document.getElementById('categoria_id').value || null,
+        descricao: document.getElementById('descricao').value,
+        variacoes: coletarVariacoesDoDOM(),
+    };
+
+    try {
+        if (PRODUTO_ID) {
+            await JF.api(`/produtos/api/${PRODUTO_ID}`, { method: 'PUT', body: JSON.stringify(payload) });
+            // sincroniza variações: existentes via PUT, novas via POST
+            for (const v of payload.variacoes) {
+                if (v.id) {
+                    await JF.api(`/produtos/api/variacoes/${v.id}`, { method: 'PUT', body: JSON.stringify(v) });
+                } else {
+                    await JF.api(`/produtos/api/${PRODUTO_ID}/variacoes`, { method: 'POST', body: JSON.stringify(v) });
+                }
+            }
+            JF.toast('Produto atualizado.');
+            await carregarProduto();
+        } else {
+            const criado = await JF.api('/produtos/api', { method: 'POST', body: JSON.stringify(payload) });
+            JF.toast('Produto criado.');
+            window.location.href = `/produtos/${criado.id}/editar`;
+        }
+    } catch (e) { JF.erro(e); }
+});
+
+carregarCategorias();
+carregarProduto();
+</script>
+{% endblock %}

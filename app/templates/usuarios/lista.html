@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block titulo %}Usuários{% endblock %}
+{% block titulo_pagina %}Gerenciar Usuários{% endblock %}
+
+{% block conteudo %}
+<div class="d-flex justify-content-end mb-3">
+    <button class="btn btn-jf" id="btn-novo"><i class="bi bi-person-plus"></i> Novo Vendedor</button>
+</div>
+
+<div class="table-responsive">
+    <table class="jf-tabela">
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th></th></tr></thead>
+        <tbody id="corpo-tabela"></tbody>
+    </table>
+</div>
+
+<div class="modal fade" id="modal-usuario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="titulo-modal">Novo Usuário</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="u-id">
+                <div class="mb-3"><label>Nome</label><input class="form-control" id="u-nome"></div>
+                <div class="mb-3"><label>E-mail</label><input class="form-control" id="u-email"></div>
+                <div class="mb-3">
+                    <label>Papel</label>
+                    <select class="form-select" id="u-papel">
+                        <option value="vendedor">Vendedor(a)</option>
+                        <option value="admin">Administrador(a)</option>
+                    </select>
+                </div>
+                <div class="mb-0" id="bloco-senha">
+                    <label>Senha (mín. 6 caracteres)</label>
+                    <input type="password" class="form-control" id="u-senha">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-jf-outline" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-jf" id="btn-salvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal-senha" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Redefinir Senha</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="rs-id">
+                <label>Nova senha (mín. 6 caracteres)</label>
+                <input type="password" class="form-control" id="rs-senha">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-jf-outline" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-jf" id="btn-confirmar-senha">Redefinir</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let modalUsuario, modalSenha;
+document.addEventListener('DOMContentLoaded', () => {
+    modalUsuario = new bootstrap.Modal(document.getElementById('modal-usuario'));
+    modalSenha = new bootstrap.Modal(document.getElementById('modal-senha'));
+});
+
+async function carregar() {
+    const usuarios = await JF.api('/usuarios/api');
+    document.getElementById('corpo-tabela').innerHTML = usuarios.map(u => `
+        <tr>
+            <td>${u.nome}</td>
+            <td>${u.email}</td>
+            <td><span class="badge-jf badge-rosa">${u.papel === 'admin' ? 'Admin' : 'Vendedor(a)'}</span></td>
+            <td>${u.ativo ? '<span class="badge-jf badge-verde">Ativo</span>' : '<span class="badge-jf badge-cinza">Inativo</span>'}</td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-jf-outline" onclick='abrirEdicao(${JSON.stringify(u)})' title="Editar"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-jf-outline" onclick="abrirRedefinirSenha(${u.id})" title="Redefinir senha"><i class="bi bi-key"></i></button>
+                <button class="btn btn-sm ${u.ativo ? 'btn-outline-danger' : 'btn-outline-success'}" onclick="alternarStatus(${u.id})" title="${u.ativo ? 'Desativar' : 'Ativar'}">
+                    <i class="bi bi-${u.ativo ? 'toggle-on' : 'toggle-off'}"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('btn-novo').addEventListener('click', () => {
+    document.getElementById('u-id').value = '';
+    document.getElementById('u-nome').value = '';
+    document.getElementById('u-email').value = '';
+    document.getElementById('u-papel').value = 'vendedor';
+    document.getElementById('u-senha').value = '';
+    document.getElementById('bloco-senha').classList.remove('d-none');
+    document.getElementById('titulo-modal').textContent = 'Novo Usuário';
+    modalUsuario.show();
+});
+
+function abrirEdicao(u) {
+    document.getElementById('u-id').value = u.id;
+    document.getElementById('u-nome').value = u.nome;
+    document.getElementById('u-email').value = u.email;
+    document.getElementById('u-papel').value = u.papel;
+    document.getElementById('bloco-senha').classList.add('d-none');
+    document.getElementById('titulo-modal').textContent = 'Editar Usuário';
+    modalUsuario.show();
+}
+
+document.getElementById('btn-salvar').addEventListener('click', async () => {
+    const id = document.getElementById('u-id').value;
+    const payload = {
+        nome: document.getElementById('u-nome').value,
+        email: document.getElementById('u-email').value,
+        papel: document.getElementById('u-papel').value,
+    };
+    try {
+        if (id) {
+            await JF.api(`/usuarios/api/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+            payload.senha = document.getElementById('u-senha').value;
+            await JF.api('/usuarios/api', { method: 'POST', body: JSON.stringify(payload) });
+        }
+        JF.toast('Usuário salvo.');
+        modalUsuario.hide();
+        carregar();
+    } catch (e) { JF.erro(e); }
+});
+
+function abrirRedefinirSenha(id) {
+    document.getElementById('rs-id').value = id;
+    document.getElementById('rs-senha').value = '';
+    modalSenha.show();
+}
+
+document.getElementById('btn-confirmar-senha').addEventListener('click', async () => {
+    const id = document.getElementById('rs-id').value;
+    try {
+        await JF.api(`/usuarios/api/${id}/senha`, { method: 'PUT', body: JSON.stringify({ senha: document.getElementById('rs-senha').value }) });
+        JF.toast('Senha redefinida.');
+        modalSenha.hide();
+    } catch (e) { JF.erro(e); }
+});
+
+async function alternarStatus(id) {
+    try {
+        await JF.api(`/usuarios/api/${id}/status`, { method: 'PUT' });
+        carregar();
+    } catch (e) { JF.erro(e); }
+}
+
+carregar();
+</script>
+{% endblock %}

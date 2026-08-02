@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Detalhe do Cliente{% endblock %}
+{% block titulo_pagina %}Detalhe do Cliente{% endblock %}
+
+{% block conteudo %}
+<a href="{{ url_for('clientes.pagina_lista') }}" class="text-suave small"><i class="bi bi-arrow-left"></i> Voltar</a>
+<div id="conteudo" class="mt-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CLIENTE_ID = {{ cliente_id }};
+
+async function carregar() {
+    const c = await JF.api(`/clientes/api/${CLIENTE_ID}`);
+    document.getElementById('conteudo').innerHTML = `
+        <div class="jf-card mb-3">
+            <h2 class="h5 mb-1">${c.nome}</h2>
+            <div class="text-suave small">${c.telefone || 'Sem telefone'} ${c.cpf ? '· CPF ' + c.cpf : ''}</div>
+            <div class="text-suave small mt-1">${c.endereco_formatado || 'Sem endereço cadastrado'}</div>
+        </div>
+        <div class="jf-card">
+            <h3 class="h6 mb-3">Histórico de Compras</h3>
+            <div class="table-responsive">
+                <table class="jf-tabela">
+                    <thead><tr><th>Nº</th><th>Data</th><th>Total</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                    ${c.historico_compras.map(v => `
+                        <tr>
+                            <td>${v.numero}</td><td>${JF.data(v.criado_em)}</td><td>${JF.moeda(v.total)}</td>
+                            <td>${v.reembolsada ? '<span class="badge-jf badge-vermelho">Reembolsada</span>' : '<span class="badge-jf badge-verde">Concluída</span>'}</td>
+                            <td><a href="/vendas/${v.id}" class="btn btn-sm btn-jf-outline">Ver</a></td>
+                        </tr>`).join('') || '<tr><td colspan="5" class="text-suave text-center py-3">Nenhuma compra registrada.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+carregar();
+</script>
+{% endblock %}

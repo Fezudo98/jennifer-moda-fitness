@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block titulo %}Início{% endblock %}
+{% block titulo_pagina %}Início{% endblock %}
+
+{% block conteudo %}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="jf-kpi destaque">
+            <div class="rotulo"><i class="bi bi-cash-coin"></i> Saldo em Caixa</div>
+            <div class="valor">{{ saldo_caixa|moeda }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="jf-kpi">
+            <div class="rotulo">Vendas Hoje</div>
+            <div class="valor">{{ vendas_hoje }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="jf-kpi">
+            <div class="rotulo">Faturado Hoje</div>
+            <div class="valor">{{ total_hoje|moeda }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="jf-kpi">
+            <div class="rotulo"><i class="bi bi-exclamation-triangle text-rosa"></i> Estoque Baixo</div>
+            <div class="valor">{{ estoque_baixo }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-2">
+    <div class="col-6 col-md-4">
+        <a href="{{ url_for('vendas.pagina_pdv') }}" class="jf-atalho text-decoration-none h-100">
+            <i class="bi bi-cart-plus"></i>
+            <span>Nova Venda</span>
+        </a>
+    </div>
+    <div class="col-6 col-md-4">
+        <a href="{{ url_for('produtos.pagina_lista') }}" class="jf-atalho text-decoration-none h-100">
+            <i class="bi bi-box-seam"></i>
+            <span>Consultar Estoque</span>
+        </a>
+    </div>
+    <div class="col-6 col-md-4">
+        <a href="{{ url_for('clientes.pagina_lista') }}" class="jf-atalho text-decoration-none h-100">
+            <i class="bi bi-people"></i>
+            <span>Gerenciar Clientes</span>
+        </a>
+    </div>
+</div>
+
+<div class="jf-cat-titulo">Vendas &amp; Catálogo</div>
+<div class="row g-3">
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('vendas.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-receipt text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Vendas Realizadas</div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('cupons.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-ticket-perforated text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Cupons</div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('entregas.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-bicycle text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Entregas</div>
+        </a>
+    </div>
+</div>
+
+{% if usuario_logado_papel == 'admin' %}
+<div class="jf-cat-titulo">Sistema</div>
+<div class="row g-3">
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('relatorios.pagina_dashboard') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-graph-up text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Relatórios</div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('caixa.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-cash-coin text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Caixa</div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('usuarios.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-person-badge text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Usuários</div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('logs.pagina_lista') }}" class="jf-card jf-card-hover d-block text-decoration-none">
+            <i class="bi bi-clock-history text-rosa fs-4"></i>
+            <div class="fw-semibold mt-2">Logs de Atividade</div>
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

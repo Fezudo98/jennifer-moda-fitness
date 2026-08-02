@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block titulo %}Nova Venda{% endblock %}
+{% block titulo_pagina %}Nova Venda (PDV){% endblock %}
+
+{% block conteudo %}
+<div class="jf-pdv-grid">
+    <div>
+        <div class="jf-card mb-3">
+            <label>Buscar produto (nome, SKU ou código de barras)</label>
+            <input type="text" id="busca-produto" class="form-control form-control-lg" placeholder="Escaneie ou digite para buscar..." autofocus>
+            <div id="resultados-busca" class="mt-2"></div>
+        </div>
+
+        <div class="jf-card">
+            <h2 class="h6 mb-3">Carrinho</h2>
+            <div id="carrinho"></div>
+            <p class="text-suave small text-center py-3 mb-0" id="carrinho-vazio">Nenhum item no carrinho ainda.</p>
+        </div>
+    </div>
+
+    <div>
+        <div class="jf-card mb-3">
+            <h2 class="h6 mb-2">Cliente</h2>
+            <input type="text" id="busca-cliente" class="form-control mb-2" placeholder="Buscar por nome, telefone ou CPF...">
+            <div id="resultados-cliente" class="mb-2"></div>
+            <div id="cliente-selecionado" class="badge-jf badge-rosa d-none"></div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <h2 class="h6 mb-2">Entrega</h2>
+            <select id="entrega-tipo" class="form-select mb-2">
+                <option value="retirada">Retirada na loja</option>
+                <option value="motoboy">Motoboy</option>
+            </select>
+            <div id="campos-entrega" class="d-none">
+                <textarea id="entrega-endereco" class="form-control mb-2" rows="2" placeholder="Endereço de entrega completo"></textarea>
+                <input type="text" id="entrega-taxa" class="form-control" placeholder="Taxa de entrega (R$)">
+            </div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <h2 class="h6 mb-2">Cupom</h2>
+            <div class="input-group">
+                <input type="text" id="cupom-codigo" class="form-control text-uppercase" placeholder="CÓDIGO">
+                <button class="btn btn-jf-outline" id="btn-aplicar-cupom">Aplicar</button>
+            </div>
+            <div id="cupom-status" class="small mt-1"></div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Subtotal</span><span id="resumo-subtotal">R$ 0,00</span></div>
+            <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Desconto</span><span id="resumo-desconto">R$ 0,00</span></div>
+            <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Taxa de entrega</span><span id="resumo-taxa">R$ 0,00</span></div>
+            <hr style="border-color: var(--jf-borda)">
+            <div class="d-flex justify-content-between fw-bold fs-5"><span>Total</span><span class="text-rosa" id="resumo-total">R$ 0,00</span></div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h2 class="h6 mb-0">Pagamento</h2>
+                <button class="btn btn-sm btn-jf-outline" id="btn-add-pagamento"><i class="bi bi-plus-lg"></i></button>
+            </div>
+            <div id="lista-pagamentos"></div>
+            <div class="d-flex justify-content-between small mt-2">
+                <span class="text-suave">Total pago</span><span id="resumo-pago">R$ 0,00</span>
+            </div>
+            <div class="d-flex justify-content-between small">
+                <span class="text-suave">Troco</span><span id="resumo-troco">R$ 0,00</span>
+            </div>
+        </div>
+
+        <button class="btn btn-jf w-100 py-3 fs-5" id="btn-finalizar"><i class="bi bi-check2-circle"></i> Finalizar Venda</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let carrinho = [];
+let clienteSelecionado = null;
+let pagamentos = [{ forma: 'dinheiro', valor: '', parcelas: null }];
+let cupomAplicado = null;
+let totais = { subtotal: 0, desconto: 0, taxa: 0, total: 0 };
+
+// ---------- Busca de produtos ----------
+let buscaProdutoTimeout;
+document.getElementById('busca-produto').addEventListener('input', (e) => {
+    clearTimeout(buscaProdutoTimeout);
+    const termo = e.target.value.trim();
+    if (!termo) { document.getElementById('resultados-busca').innerHTML = ''; return; }
+    buscaProdutoTimeout = setTimeout(() => buscarProdutos(termo), 250);
+});
+document.getElementById('busca-produto').addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const termo = e.target.value.trim();
+        if (!termo) return;
+        const resultados = await JF.api('/produtos/api/variacoes/busca?q=' + encodeURIComponent(termo));
+        if (resultados.length === 1) {
+            adicionarAoCarrinho(resultados[0]);
+            e.target.value = '';
+            document.getElementById('resultados-busca').innerHTML = '';
+        }
+    }
+});
+
+async function buscarProdutos(termo) {
+    const resultados = await JF.api('/produtos/api/variacoes/busca?q=' + encodeURIComponent(termo));
+    const container = document.getElementById('resultados-busca');
+    if (!resultados.length) {
+        container.innerHTML = '<p class="text-suave small mb-0">Nenhum produto encontrado.</p>';
+        return;
+    }
+    container.innerHTML = resultados.map(v => `
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2" style="border-color: var(--jf-borda) !important">
+            <div>
+                <div class="fw-semibold small">${v.produto_nome} <span class="jf-swatch" style="background:${v.cor_hex || '#999'}"></span> ${v.cor} / ${v.tamanho}</div>
+                <div class="text-suave small">${v.sku} · ${JF.moeda(v.preco_venda)} · ${v.quantidade} em estoque</div>
+            </div>
+            <button class="btn btn-sm btn-jf" ${v.quantidade <= 0 ? 'disabled' : ''} onclick='adicionarAoCarrinho(${JSON.stringify(v)})'>Adicionar</button>
+        </div>
+    `).join('');
+}
+
+function adicionarAoCarrinho(variacao) {
+    const existente = carrinho.find(i => i.variacao_id === variacao.id);
+    if (existente) {
+        if (existente.quantidade + 1 > variacao.quantidade) { JF.toast('Estoque insuficiente.', 'erro'); return; }
+        existente.quantidade++;
+    } else {
+        carrinho.push({ variacao_id: variacao.id, nome: variacao.produto_nome, cor: variacao.cor, tamanho: variacao.tamanho, sku: variacao.sku, preco: variacao.preco_venda, quantidade: 1, estoqueMax: variacao.quantidade });
+    }
+    document.getElementById('busca-produto').value = '';
+    document.getElementById('resultados-busca').innerHTML = '';
+    document.getElementById('busca-produto').focus();
+    renderizarCarrinho();
+    recalcular();
+}
+
+function renderizarCarrinho() {
+    const container = document.getElementById('carrinho');
+    document.getElementById('carrinho-vazio').classList.toggle('d-none', carrinho.length > 0);
+    container.innerHTML = carrinho.map((item, idx) => `
+        <div class="jf-carrinho-item">
+            <div class="flex-grow-1">
+                <div class="fw-semibold small">${item.nome}</div>
+                <div class="text-suave small">${item.cor} / ${item.tamanho} · ${JF.moeda(item.preco)} un.</div>
+            </div>
+            <input type="number" min="1" max="${item.estoqueMax}" value="${item.quantidade}" class="form-control form-control-sm" style="width:70px" onchange="alterarQuantidade(${idx}, this.value)">
+            <div class="fw-semibold small" style="width:90px" class="text-end">${JF.moeda(item.preco * item.quantidade)}</div>
+            <button class="btn btn-sm text-danger" onclick="removerItem(${idx})"><i class="bi bi-x-lg"></i></button>
+        </div>
+    `).join('');
+}
+
+function alterarQuantidade(idx, valor) {
+    const qtd = parseInt(valor);
+    if (qtd > carrinho[idx].estoqueMax) { JF.toast('Estoque insuficiente.', 'erro'); renderizarCarrinho(); return; }
+    if (qtd <= 0) { removerItem(idx); return; }
+    carrinho[idx].quantidade = qtd;
+    renderizarCarrinho();
+    recalcular();
+}
+function removerItem(idx) {
+    carrinho.splice(idx, 1);
+    renderizarCarrinho();
+    recalcular();
+}
+
+// ---------- Cliente ----------
+let buscaClienteTimeout;
+document.getElementById('busca-cliente').addEventListener('input', (e) => {
+    clearTimeout(buscaClienteTimeout);
+    const termo = e.target.value.trim();
+    if (!termo) { document.getElementById('resultados-cliente').innerHTML = ''; return; }
+    buscaClienteTimeout = setTimeout(async () => {
+        const resultados = await JF.api('/clientes/api?q=' + encodeURIComponent(termo));
+        document.getElementById('resultados-cliente').innerHTML = resultados.map(c => `
+            <div class="small py-1 border-bottom" style="cursor:pointer;border-color:var(--jf-borda) !important" onclick='selecionarCliente(${JSON.stringify(c)})'>${c.nome} · ${c.telefone || 'sem telefone'}</div>
+        `).join('') || '<p class="text-suave small">Nenhum cliente encontrado.</p>';
+    }, 250);
+});
+function selecionarCliente(cliente) {
+    clienteSelecionado = cliente;
+    document.getElementById('busca-cliente').value = '';
+    document.getElementById('resultados-cliente').innerHTML = '';
+    const badge = document.getElementById('cliente-selecionado');
+    badge.classList.remove('d-none');
+    badge.innerHTML = `${cliente.nome} <i class="bi bi-x-lg ms-1" style="cursor:pointer" onclick="limparCliente()"></i>`;
+}
+function limparCliente() {
+    clienteSelecionado = null;
+    document.getElementById('cliente-selecionado').classList.add('d-none');
+}
+
+// ---------- Entrega ----------
+document.getElementById('entrega-tipo').addEventListener('change', (e) => {
+    document.getElementById('campos-entrega').classList.toggle('d-none', e.target.value !== 'motoboy');
+    recalcular();
+});
+document.getElementById('entrega-taxa').addEventListener('input', recalcular);
+
+// ---------- Cupom ----------
+document.getElementById('btn-aplicar-cupom').addEventListener('click', () => {
+    cupomAplicado = document.getElementById('cupom-codigo').value.trim().toUpperCase() || null;
+    recalcular();
+});
+
+// ---------- Pagamentos ----------
+function renderizarPagamentos() {
+    document.getElementById('lista-pagamentos').innerHTML = pagamentos.map((p, idx) => `
+        <div class="row g-1 mb-2 align-items-center">
+            <div class="col-5">
+                <select class="form-select form-select-sm" onchange="pagamentos[${idx}].forma = this.value; renderizarPagamentos(); recalcular();">
+                    <option value="dinheiro" ${p.forma === 'dinheiro' ? 'selected' : ''}>Dinheiro</option>
+                    <option value="pix" ${p.forma === 'pix' ? 'selected' : ''}>PIX</option>
+                    <option value="cartao_credito" ${p.forma === 'cartao_credito' ? 'selected' : ''}>Cartão Crédito</option>
+                    <option value="cartao_debito" ${p.forma === 'cartao_debito' ? 'selected' : ''}>Cartão Débito</option>
+                </select>
+            </div>
+            <div class="col-4">
+                <input type="text" class="form-control form-control-sm" placeholder="Valor" value="${p.valor}" oninput="pagamentos[${idx}].valor = this.value; recalcular();">
+            </div>
+            <div class="col-2">
+                ${p.forma === 'cartao_credito' ? `<input type="number" min="1" max="24" class="form-control form-control-sm" placeholder="Parc." value="${p.parcelas || ''}" oninput="pagamentos[${idx}].parcelas = this.value;">` : ''}
+            </div>
+            <div class="col-1">
+                ${pagamentos.length > 1 ? `<button class="btn btn-sm text-danger" onclick="pagamentos.splice(${idx},1); renderizarPagamentos(); recalcular();"><i class="bi bi-x"></i></button>` : ''}
+            </div>
+        </div>
+    `).join('');
+}
+document.getElementById('btn-add-pagamento').addEventListener('click', () => {
+    pagamentos.push({ forma: 'dinheiro', valor: '', parcelas: null });
+    renderizarPagamentos();
+});
+
+function totalPago() {
+    return pagamentos.reduce((soma, p) => soma + (parseFloat((p.valor || '0').toString().replace(',', '.')) || 0), 0);
+}
+
+async function recalcular() {
+    if (!carrinho.length) {
+        totais = { subtotal: 0, desconto: 0, taxa: 0, total: 0 };
+        atualizarResumo();
+        return;
+    }
+    const taxa = document.getElementById('entrega-tipo').value === 'motoboy' ? (document.getElementById('entrega-taxa').value || 0) : 0;
+    try {
+        const resp = await JF.api('/vendas/api/calcular', {
+            method: 'POST',
+            body: JSON.stringify({
+                itens: carrinho.map(i => ({ variacao_id: i.variacao_id, quantidade: i.quantidade })),
+                cupom_codigo: cupomAplicado,
+                entrega_taxa: taxa,
+            }),
+        });
+        totais = resp;
+        document.getElementById('cupom-status').innerHTML = cupomAplicado ? (resp.cupom_valido ? '<span class="text-success">Cupom aplicado!</span>' : '') : '';
+    } catch (e) {
+        document.getElementById('cupom-status').innerHTML = cupomAplicado ? `<span class="text-danger">${e.message}</span>` : '';
+        totais = { subtotal: carrinho.reduce((s,i)=>s+i.preco*i.quantidade,0), desconto: 0, taxa: parseFloat(taxa)||0, total: 0 };
+        totais.total = totais.subtotal + totais.taxa;
+    }
+    atualizarResumo();
+}
+
+function atualizarResumo() {
+    document.getElementById('resumo-subtotal').textContent = JF.moeda(totais.subtotal);
+    document.getElementById('resumo-desconto').textContent = '- ' + JF.moeda(totais.desconto);
+    document.getElementById('resumo-taxa').textContent = JF.moeda(totais.taxa);
+    document.getElementById('resumo-total').textContent = JF.moeda(totais.total);
+
+    const pago = totalPago();
+    document.getElementById('resumo-pago').textContent = JF.moeda(pago);
+    const troco = Math.max(0, pago - totais.total);
+    document.getElementById('resumo-troco').textContent = JF.moeda(troco);
+}
+
+document.getElementById('btn-finalizar').addEventListener('click', async () => {
+    if (!carrinho.length) { JF.toast('Adicione produtos ao carrinho.', 'erro'); return; }
+    const entregaTipo = document.getElementById('entrega-tipo').value;
+    const payload = {
+        cliente_id: clienteSelecionado ? clienteSelecionado.id : null,
+        itens: carrinho.map(i => ({ variacao_id: i.variacao_id, quantidade: i.quantidade })),
+        pagamentos: pagamentos.map(p => ({ forma: p.forma, valor: parseFloat((p.valor || '0').toString().replace(',', '.')), parcelas: p.parcelas ? parseInt(p.parcelas) : null })),
+        cupom_codigo: cupomAplicado,
+        entrega_tipo: entregaTipo,
+        entrega_endereco: entregaTipo === 'motoboy' ? document.getElementById('entrega-endereco').value : null,
+        entrega_taxa: entregaTipo === 'motoboy' ? (document.getElementById('entrega-taxa').value || 0) : 0,
+    };
+
+    const btn = document.getElementById('btn-finalizar');
+    btn.disabled = true;
+    try {
+        const venda = await JF.api('/vendas/api', { method: 'POST', body: JSON.stringify(payload) });
+        JF.toast('Venda registrada com sucesso!');
+        window.location.href = `/vendas/${venda.id}/recibo`;
+    } catch (e) {
+        JF.erro(e);
+        btn.disabled = false;
+    }
+});
+
+renderizarPagamentos();
+renderizarCarrinho();
+atualizarResumo();
+</script>
+{% endblock %}

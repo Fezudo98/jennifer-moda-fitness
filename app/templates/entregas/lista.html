@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titulo %}Entregas{% endblock %}
+{% block titulo_pagina %}Entregas{% endblock %}
+
+{% block conteudo %}
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-wrap gap-2">
+        <select id="filtro-status" class="form-select" style="max-width:200px">
+            <option value="">Todos status</option>
+            <option value="pendente">Pendente</option>
+            <option value="saiu">Saiu para entrega</option>
+            <option value="entregue">Entregue</option>
+        </select>
+        <input type="date" id="data-inicio" class="form-control" style="max-width:160px">
+        <input type="date" id="data-fim" class="form-control" style="max-width:160px">
+        <button class="btn btn-jf-outline" id="btn-filtrar"><i class="bi bi-funnel"></i></button>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="jf-kpi"><div class="rotulo">Entregas no período</div><div class="valor" id="kpi-qtd">0</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="jf-kpi"><div class="rotulo">Total em taxas</div><div class="valor" id="kpi-taxas">R$ 0,00</div></div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="jf-tabela">
+        <thead><tr><th>Nº Venda</th><th>Cliente</th><th>Endereço</th><th>Taxa</th><th>Status</th><th></th></tr></thead>
+        <tbody id="corpo-tabela"></tbody>
+    </table>
+</div>
+<p class="text-suave small text-center py-4 d-none" id="estado-vazio">Nenhuma entrega encontrada.</p>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function badgeStatus(s) {
+    const mapa = { pendente: 'badge-amarelo', saiu: 'badge-rosa', entregue: 'badge-verde' };
+    const rotulos = { pendente: 'Pendente', saiu: 'Saiu para entrega', entregue: 'Entregue' };
+    return `<span class="badge-jf ${mapa[s]}">${rotulos[s]}</span>`;
+}
+
+async function carregar() {
+    const status = document.getElementById('filtro-status').value;
+    const entregas = await JF.api('/entregas/api' + (status ? '?status=' + status : ''));
+    const corpo = document.getElementById('corpo-tabela');
+    document.getElementById('estado-vazio').classList.toggle('d-none', entregas.length > 0);
+
+    corpo.innerHTML = entregas.map(v => `
+        <tr>
+            <td><a href="/vendas/${v.id}">${v.numero}</a></td>
+            <td>${v.cliente_nome}</td>
+            <td class="small">${v.entrega_endereco || '-'}</td>
+            <td>${JF.moeda(v.entrega_taxa)}</td>
+            <td>${badgeStatus(v.entrega_status)}</td>
+            <td>
+                <select class="form-select form-select-sm" style="width:180px" onchange="atualizarStatus(${v.id}, this.value)">
+                    <option value="pendente" ${v.entrega_status === 'pendente' ? 'selected' : ''}>Pendente</option>
+                    <option value="saiu" ${v.entrega_status === 'saiu' ? 'selected' : ''}>Saiu para entrega</option>
+                    <option value="entregue" ${v.entrega_status === 'entregue' ? 'selected' : ''}>Entregue</option>
+                </select>
+            </td>
+        </tr>
+    `).join('');
+
+    await carregarRelatorio();
+}
+
+async function carregarRelatorio() {
+    const params = new URLSearchParams();
+    const inicio = document.getElementById('data-inicio').value;
+    const fim = document.getElementById('data-fim').value;
+    if (inicio) params.set('data_inicio', inicio);
+    if (fim) params.set('data_fim', fim);
+    const rel = await JF.api('/entregas/api/relatorio?' + params.toString());
+    document.getElementById('kpi-qtd').textContent = rel.quantidade;
+    document.getElementById('kpi-taxas').textContent = JF.moeda(rel.total_taxas);
+}
+
+async function atualizarStatus(id, status) {
+    try {
+        await JF.api(`/entregas/api/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+        JF.toast('Status atualizado.');
+        carregar();
+    } catch (e) { JF.erro(e); }
+}
+
+document.getElementById('filtro-status').addEventListener('change', carregar);
+document.getElementById('btn-filtrar').addEventListener('click', carregarRelatorio);
+carregar();
+</script>
+{% endblock %}

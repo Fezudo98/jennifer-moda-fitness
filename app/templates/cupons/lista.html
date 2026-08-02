@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block titulo %}Cupons{% endblock %}
+{% block titulo_pagina %}Cupons de Desconto{% endblock %}
+
+{% block conteudo %}
+<div class="d-flex justify-content-end mb-3">
+    <button class="btn btn-jf" id="btn-novo"><i class="bi bi-plus-lg"></i> Novo Cupom</button>
+</div>
+
+<div class="table-responsive">
+    <table class="jf-tabela">
+        <thead><tr><th>Código</th><th>Tipo</th><th>Valor</th><th>Aplicação</th><th>Status</th><th></th></tr></thead>
+        <tbody id="corpo-tabela"></tbody>
+    </table>
+</div>
+
+<div class="modal fade" id="modal-cupom" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="titulo-modal">Novo Cupom</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cupom-id">
+                <div class="mb-3"><label>Código</label><input class="form-control text-uppercase" id="f-codigo"></div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label>Tipo</label>
+                        <select class="form-select" id="f-tipo">
+                            <option value="percentual">Percentual (%)</option>
+                            <option value="fixo">Valor fixo (R$)</option>
+                        </select>
+                    </div>
+                    <div class="col-6"><label>Valor</label><input class="form-control" id="f-valor"></div>
+                </div>
+                <div class="mb-3">
+                    <label>Aplicação</label>
+                    <select class="form-select" id="f-aplicacao">
+                        <option value="total">Total da venda</option>
+                        <option value="produtos">Produtos específicos</option>
+                    </select>
+                </div>
+                <div class="mb-3 d-none" id="bloco-produtos">
+                    <label>Produtos elegíveis</label>
+                    <select class="form-select" id="f-produtos" multiple size="6"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-jf-outline" data-bs-dismiss="modal">Cancelar</button>
+                <button class="btn btn-jf" id="btn-salvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let modal, PRODUTOS = [];
+document.addEventListener('DOMContentLoaded', () => { modal = new bootstrap.Modal(document.getElementById('modal-cupom')); });
+
+document.getElementById('f-aplicacao').addEventListener('change', (e) => {
+    document.getElementById('bloco-produtos').classList.toggle('d-none', e.target.value !== 'produtos');
+});
+
+async function carregarProdutosSelect() {
+    PRODUTOS = await JF.api('/produtos/api');
+    document.getElementById('f-produtos').innerHTML = PRODUTOS.map(p => `<option value="${p.id}">${p.nome}</option>`).join('');
+}
+
+async function carregar() {
+    const cupons = await JF.api('/cupons/api');
+    document.getElementById('corpo-tabela').innerHTML = cupons.map(c => `
+        <tr>
+            <td class="fw-semibold">${c.codigo}</td>
+            <td>${c.tipo === 'percentual' ? 'Percentual' : 'Valor fixo'}</td>
+            <td>${c.tipo === 'percentual' ? c.valor + '%' : JF.moeda(c.valor)}</td>
+            <td>${c.aplicacao === 'total' ? 'Total da venda' : 'Produtos específicos'}</td>
+            <td>${c.ativo ? '<span class="badge-jf badge-verde">Ativo</span>' : '<span class="badge-jf badge-cinza">Inativo</span>'}</td>
+            <td class="text-end">
+                <button class="btn btn-sm btn-jf-outline" onclick='abrirEdicao(${JSON.stringify(c)})'><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm ${c.ativo ? 'btn-outline-danger' : 'btn-outline-success'}" onclick="alternarStatus(${c.id})">
+                    <i class="bi bi-${c.ativo ? 'toggle-on' : 'toggle-off'}"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('btn-novo').addEventListener('click', async () => {
+    document.getElementById('cupom-id').value = '';
+    document.getElementById('f-codigo').value = '';
+    document.getElementById('f-tipo').value = 'percentual';
+    document.getElementById('f-valor').value = '';
+    document.getElementById('f-aplicacao').value = 'total';
+    document.getElementById('bloco-produtos').classList.add('d-none');
+    document.getElementById('titulo-modal').textContent = 'Novo Cupom';
+    await carregarProdutosSelect();
+    modal.show();
+});
+
+async function abrirEdicao(c) {
+    await carregarProdutosSelect();
+    document.getElementById('cupom-id').value = c.id;
+    document.getElementById('f-codigo').value = c.codigo;
+    document.getElementById('f-tipo').value = c.tipo;
+    document.getElementById('f-valor').value = c.valor;
+    document.getElementById('f-aplicacao').value = c.aplicacao;
+    document.getElementById('bloco-produtos').classList.toggle('d-none', c.aplicacao !== 'produtos');
+    Array.from(document.getElementById('f-produtos').options).forEach(opt => opt.selected = c.produto_ids.includes(parseInt(opt.value)));
+    document.getElementById('titulo-modal').textContent = 'Editar Cupom';
+    modal.show();
+}
+
+document.getElementById('btn-salvar').addEventListener('click', async () => {
+    const id = document.getElementById('cupom-id').value;
+    const aplicacao = document.getElementById('f-aplicacao').value;
+    const payload = {
+        codigo: document.getElementById('f-codigo').value,
+        tipo: document.getElementById('f-tipo').value,
+        valor: document.getElementById('f-valor').value,
+        aplicacao,
+        produto_ids: aplicacao === 'produtos' ? Array.from(document.getElementById('f-produtos').selectedOptions).map(o => parseInt(o.value)) : [],
+    };
+    try {
+        if (id) await JF.api(`/cupons/api/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        else await JF.api('/cupons/api', { method: 'POST', body: JSON.stringify(payload) });
+        JF.toast('Cupom salvo.');
+        modal.hide();
+        carregar();
+    } catch (e) { JF.erro(e); }
+});
+
+async function alternarStatus(id) {
+    try {
+        await JF.api(`/cupons/api/${id}/status`, { method: 'PUT' });
+        carregar();
+    } catch (e) { JF.erro(e); }
+}
+
+carregar();
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('jf_tema') || 'escuro');</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>{% block titulo %}Jennifer Moda Fitness{% endblock %} · Painel</title>
+    <meta name="description" content="Painel interno de gestão de estoque e ponto de venda da Jennifer Moda Fitness.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+{% block corpo %}
+<div class="jf-app">
+    <div class="jf-overlay"></div>
+    <aside class="jf-sidebar">
+        {% include "partials/logo.html" %}
+
+        <nav>
+            <div class="jf-nav-secao">Principal</div>
+            <a href="{{ url_for('home.pagina_home') }}" class="jf-nav-link {{ 'ativo' if request.endpoint == 'home.pagina_home' }}"><i class="bi bi-house-door"></i> Início</a>
+            <a href="{{ url_for('vendas.pagina_pdv') }}" class="jf-nav-link {{ 'ativo' if request.endpoint == 'vendas.pagina_pdv' }}"><i class="bi bi-cart3"></i> Nova Venda (PDV)</a>
+            {% if usuario_logado_papel == 'admin' %}
+            <a href="{{ url_for('relatorios.pagina_dashboard') }}" class="jf-nav-link {{ 'ativo' if request.endpoint == 'relatorios.pagina_dashboard' }}"><i class="bi bi-graph-up"></i> Relatórios</a>
+            {% endif %}
+
+            <div class="jf-nav-secao">Vendas &amp; Catálogo</div>
+            <a href="{{ url_for('produtos.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('produtos.') }}"><i class="bi bi-box-seam"></i> Produtos &amp; Estoque</a>
+            <a href="{{ url_for('vendas.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint == 'vendas.pagina_lista' }}"><i class="bi bi-receipt"></i> Vendas Realizadas</a>
+            <a href="{{ url_for('cupons.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('cupons.') }}"><i class="bi bi-ticket-perforated"></i> Cupons</a>
+            <a href="{{ url_for('entregas.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('entregas.') }}"><i class="bi bi-bicycle"></i> Entregas</a>
+
+            <div class="jf-nav-secao">Clientes</div>
+            <a href="{{ url_for('clientes.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('clientes.') }}"><i class="bi bi-people"></i> Clientes</a>
+
+            {% if usuario_logado_papel == 'admin' %}
+            <div class="jf-nav-secao">Sistema</div>
+            <a href="{{ url_for('caixa.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('caixa.') }}"><i class="bi bi-cash-coin"></i> Caixa</a>
+            <a href="{{ url_for('usuarios.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('usuarios.') }}"><i class="bi bi-person-badge"></i> Usuários</a>
+            <a href="{{ url_for('logs.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('logs.') }}"><i class="bi bi-clock-history"></i> Logs de Atividade</a>
+            {% endif %}
+        </nav>
+    </aside>
+
+    <div class="jf-main">
+        <header class="jf-topbar">
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-jf-outline jf-sidebar-toggle"><i class="bi bi-list"></i></button>
+                <h1 class="h6 mb-0 jf-titulo">{% block titulo_pagina %}{% endblock %}</h1>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <div class="jf-tema-switch" role="group" aria-label="Escolher tema">
+                    <button type="button" class="jf-tema-opcao jf-tema-escuro" data-tema="escuro" title="Tema escuro" aria-label="Tema escuro" aria-pressed="false"></button>
+                    <button type="button" class="jf-tema-opcao jf-tema-claro" data-tema="claro" title="Tema branco" aria-label="Tema branco" aria-pressed="false"></button>
+                    <button type="button" class="jf-tema-opcao jf-tema-rosa" data-tema="rosa" title="Tema rosa" aria-label="Tema rosa" aria-pressed="false"></button>
+                </div>
+                <span class="text-suave small d-none d-sm-inline">{{ usuario_logado_nome }} <span class="badge-jf badge-rosa ms-1">{{ 'Admin' if usuario_logado_papel == 'admin' else 'Vendedor(a)' }}</span></span>
+                <button class="btn btn-sm btn-jf-outline" onclick="JF.logout()"><i class="bi bi-box-arrow-right"></i> Sair</button>
+            </div>
+        </header>
+        <main class="jf-conteudo">
+            {% block conteudo %}{% endblock %}
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    window.JF_TOKEN_PRESENTE = !!localStorage.getItem('jf_token');
+    if (!window.JF_TOKEN_PRESENTE && !window.location.pathname.startsWith('/auth')) {
+        // Sem token de API válido, mas a sessão de página pode existir; a próxima chamada fetch tratará 401.
+    }
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

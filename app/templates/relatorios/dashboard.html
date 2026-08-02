@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block titulo %}Relatórios{% endblock %}
+{% block titulo_pagina %}Relatórios &amp; Dashboard{% endblock %}
+
+{% block conteudo %}
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <input type="date" id="data-inicio" class="form-control" style="max-width:170px">
+    <input type="date" id="data-fim" class="form-control" style="max-width:170px">
+    <button class="btn btn-jf-outline" id="btn-filtrar"><i class="bi bi-funnel"></i> Filtrar</button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-2-4" style="flex:1 1 200px">
+        <div class="jf-kpi destaque h-100"><div class="rotulo">Receita Total</div><div class="valor" id="kpi-receita">R$ 0,00</div></div>
+    </div>
+    <div class="col-6" style="flex:1 1 200px">
+        <div class="jf-kpi h-100"><div class="rotulo">Nº de Vendas</div><div class="valor" id="kpi-vendas">0</div></div>
+    </div>
+    <div class="col-6" style="flex:1 1 200px">
+        <div class="jf-kpi h-100"><div class="rotulo">Ticket Médio</div><div class="valor" id="kpi-ticket">R$ 0,00</div></div>
+    </div>
+    <div class="col-6" style="flex:1 1 200px">
+        <div class="jf-kpi h-100"><div class="rotulo">Descontos</div><div class="valor" id="kpi-descontos">R$ 0,00</div></div>
+    </div>
+    <div class="col-6" style="flex:1 1 200px">
+        <div class="jf-kpi h-100"><div class="rotulo">Lucro Bruto</div><div class="valor" id="kpi-lucro">R$ 0,00</div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-8">
+        <div class="jf-card h-100">
+            <h2 class="h6 mb-3">Vendas ao Longo do Tempo</h2>
+            <canvas id="grafico-vendas" height="110"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="jf-card h-100">
+            <h2 class="h6 mb-3">Formas de Pagamento</h2>
+            <canvas id="grafico-pagamentos" height="180"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="jf-card h-100">
+            <h2 class="h6 mb-3">Produtos Mais Vendidos</h2>
+            <div id="ranking-produtos"></div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="jf-card h-100">
+            <h2 class="h6 mb-3">Ranking de Vendedores</h2>
+            <div id="ranking-vendedores"></div>
+        </div>
+    </div>
+</div>
+
+<div class="jf-card">
+    <h2 class="h6 mb-3">Vendas do Período</h2>
+    <div class="table-responsive">
+        <table class="jf-tabela">
+            <thead><tr><th>Nº</th><th>Data</th><th>Cliente</th><th>Vendedor</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <tbody id="corpo-vendas"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+let graficoVendas, graficoPagamentos;
+const CORES = ['#ec4899', '#f472b6', '#db2777', '#f9a8d4', '#831843', '#fbcfe8'];
+
+function rotuloForma(forma) {
+    return { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Cartão Crédito', cartao_debito: 'Cartão Débito' }[forma] || forma;
+}
+
+async function carregar() {
+    const params = new URLSearchParams();
+    const inicio = document.getElementById('data-inicio').value;
+    const fim = document.getElementById('data-fim').value;
+    if (inicio) params.set('data_inicio', inicio);
+    if (fim) params.set('data_fim', fim);
+
+    const d = await JF.api('/relatorios/api/dashboard?' + params.toString());
+
+    document.getElementById('kpi-receita').textContent = JF.moeda(d.receita_total);
+    document.getElementById('kpi-vendas').textContent = d.num_vendas;
+    document.getElementById('kpi-ticket').textContent = JF.moeda(d.ticket_medio);
+    document.getElementById('kpi-descontos').textContent = JF.moeda(d.total_descontos);
+    document.getElementById('kpi-lucro').textContent = JF.moeda(d.lucro_bruto);
+
+    const ctxVendas = document.getElementById('grafico-vendas');
+    if (graficoVendas) graficoVendas.destroy();
+    graficoVendas = new Chart(ctxVendas, {
+        type: 'line',
+        data: {
+            labels: d.vendas_por_dia.map(v => new Date(v.data + 'T00:00:00').toLocaleDateString('pt-BR')),
+            datasets: [{ label: 'Total vendido', data: d.vendas_por_dia.map(v => v.total), borderColor: '#ec4899', backgroundColor: 'rgba(236,72,153,.2)', tension: .3, fill: true }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#a3a0ab' } }, y: { ticks: { color: '#a3a0ab' } } } },
+    });
+
+    const ctxPag = document.getElementById('grafico-pagamentos');
+    if (graficoPagamentos) graficoPagamentos.destroy();
+    graficoPagamentos = new Chart(ctxPag, {
+        type: 'doughnut',
+        data: {
+            labels: d.pagamentos.map(p => rotuloForma(p.forma)),
+            datasets: [{ data: d.pagamentos.map(p => p.total), backgroundColor: CORES }],
+        },
+        options: { plugins: { legend: { position: 'bottom', labels: { color: '#f2f0f3' } } } },
+    });
+
+    document.getElementById('ranking-produtos').innerHTML = d.ranking_produtos.map((p, i) => `
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--jf-borda) !important">
+            <span><span class="text-rosa fw-bold me-2">#${i+1}</span>${p.nome}</span>
+            <span class="small text-suave">${p.quantidade} un. · ${JF.moeda(p.total)}</span>
+        </div>
+    `).join('') || '<p class="text-suave small">Sem dados no período.</p>';
+
+    document.getElementById('ranking-vendedores').innerHTML = d.ranking_vendedores.map((v, i) => `
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--jf-borda) !important">
+            <span><span class="text-rosa fw-bold me-2">#${i+1}</span>${v.nome}</span>
+            <span class="small text-suave">${JF.moeda(v.total)}</span>
+        </div>
+    `).join('') || '<p class="text-suave small">Sem dados no período.</p>';
+
+    const vendas = await JF.api('/vendas/api?' + params.toString());
+    document.getElementById('corpo-vendas').innerHTML = vendas.map(v => `
+        <tr>
+            <td>${v.numero}</td><td>${JF.data(v.criado_em)}</td><td>${v.cliente_nome}</td><td>${v.vendedor_nome}</td>
+            <td class="fw-semibold">${JF.moeda(v.total)}</td>
+            <td>${v.reembolsada ? '<span class="badge-jf badge-vermelho">Reembolsada</span>' : '<span class="badge-jf badge-verde">Concluída</span>'}</td>
+            <td><a href="/vendas/${v.id}" class="btn btn-sm btn-jf-outline">Ver</a></td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('btn-filtrar').addEventListener('click', carregar);
+carregar();
+</script>
+{% endblock %}

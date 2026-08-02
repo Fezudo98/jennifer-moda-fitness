@@ -1,0 +1,10 @@
+<div class="jf-logo-wrap">
+    {% set logo_path = 'app/static/img/logo.png' %}
+    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Jennifer Moda Fitness" class="jf-logo-img"
+         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+    <div class="jf-logo-fallback" style="display:none;">J</div>
+    <div class="jf-logo-texto">
+        <div class="jf-logo-nome">Jennifer</div>
+        <div class="jf-logo-sub">MODA FITNESS</div>
+    </div>
+</div>

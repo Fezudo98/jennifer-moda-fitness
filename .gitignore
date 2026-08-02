@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+instance/
+*.db
+.env
+app/static/uploads/
+app/static/barcodes/
+.DS_Store
+*.log

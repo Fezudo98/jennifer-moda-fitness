@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recibo · Jennifer Moda Fitness</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="{{ url_for('static', filename='img/logo.png') }}">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; max-width: 380px; margin: 2rem auto; color: #111; padding: 0 1rem; }
+        .cabecalho { text-align: center; margin-bottom: 1rem; }
+        .cabecalho img { width: 56px; height: 56px; border-radius: 50%; }
+        .cabecalho h1 { font-size: 1.1rem; margin: .4rem 0 0; }
+        .cabecalho .sub { font-size: .7rem; letter-spacing: .1em; color: #e91e8c; font-weight: bold; }
+        hr { border: none; border-top: 1px dashed #999; margin: .75rem 0; }
+        table { width: 100%; font-size: .8rem; border-collapse: collapse; }
+        td { padding: .15rem 0; vertical-align: top; }
+        .linha-total { display: flex; justify-content: space-between; font-size: .85rem; margin-bottom: .2rem; }
+        .total-final { font-size: 1.1rem; font-weight: bold; border-top: 1px solid #333; padding-top: .4rem; margin-top: .4rem; }
+        .rodape { text-align: center; font-size: .72rem; margin-top: 1.5rem; color: #555; }
+        .btn-imprimir { display: block; width: 100%; padding: .7rem; background: #e91e8c; color: #fff; border: none; border-radius: 8px; font-weight: bold; margin-top: 1.5rem; cursor: pointer; }
+        @media print { .btn-imprimir { display: none; } body { margin: 0; } }
+    </style>
+</head>
+<body>
+<div class="cabecalho">
+    <img src="{{ url_for('static', filename='img/logo.png') }}" onerror="this.remove()">
+    <h1>Jennifer Moda Fitness</h1>
+    <div class="sub">RECIBO DE VENDA</div>
+</div>
+<div id="conteudo">Carregando...</div>
+<button class="btn-imprimir" onclick="window.print()">Imprimir Recibo</button>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+const VENDA_ID = {{ venda_id }};
+
+function rotuloForma(forma) {
+    return { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Cartão Crédito', cartao_debito: 'Cartão Débito' }[forma] || forma;
+}
+
+async function carregar() {
+    try {
+        const v = await JF.api(`/vendas/api/${VENDA_ID}`);
+        document.getElementById('conteudo').innerHTML = `
+            <hr>
+            <div>Venda: <strong>${v.numero}</strong></div>
+            <div>Data: ${JF.data(v.criado_em)}</div>
+            <div>Vendedor(a): ${v.vendedor_nome}</div>
+            <div>Cliente: ${v.cliente_nome}</div>
+            <hr>
+            <table>
+                ${v.itens.map(i => `
+                    <tr><td colspan="2">${i.produto_nome} (${i.cor}/${i.tamanho})</td></tr>
+                    <tr><td>${i.quantidade} x ${JF.moeda(i.preco_venda_unit)}</td><td style="text-align:right">${JF.moeda(i.subtotal)}</td></tr>
+                `).join('')}
+            </table>
+            <hr>
+            <div class="linha-total"><span>Subtotal</span><span>${JF.moeda(v.subtotal)}</span></div>
+            <div class="linha-total"><span>Desconto ${v.cupom_codigo ? '(' + v.cupom_codigo + ')' : ''}</span><span>- ${JF.moeda(v.desconto)}</span></div>
+            <div class="linha-total"><span>Entrega</span><span>${JF.moeda(v.entrega_taxa)}</span></div>
+            <div class="linha-total total-final"><span>TOTAL</span><span>${JF.moeda(v.total)}</span></div>
+            <hr>
+            <div><strong>Pagamento:</strong></div>
+            ${v.pagamentos.map(p => `<div class="linha-total"><span>${rotuloForma(p.forma)}${p.parcelas ? ' ' + p.parcelas + 'x' : ''}</span><span>${JF.moeda(p.valor)}</span></div>`).join('')}
+            ${v.pagamentos.some(p => p.troco > 0) ? `<div class="linha-total"><span>Troco</span><span>${JF.moeda(v.pagamentos.reduce((s,p)=>s+p.troco,0))}</span></div>` : ''}
+            ${v.entrega_tipo === 'motoboy' ? `<hr><div><strong>Entrega (Motoboy)</strong></div><div style="font-size:.75rem">${v.entrega_endereco}</div>` : ''}
+        `;
+    } catch (e) {
+        document.getElementById('conteudo').innerHTML = '<p>Não foi possível carregar o recibo.</p>';
+    }
+}
+carregar();
+</script>
+
+<div class="rodape">Jennifer Moda Fitness &middot; Obrigada pela preferência!</div>
+</body>
+</html>

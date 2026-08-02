@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titulo %}Detalhe da Venda{% endblock %}
+{% block titulo_pagina %}Detalhe da Venda{% endblock %}
+
+{% block conteudo %}
+<a href="{{ url_for('vendas.pagina_lista') }}" class="text-suave small"><i class="bi bi-arrow-left"></i> Voltar</a>
+
+<div id="conteudo-venda" class="mt-3"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const VENDA_ID = {{ venda_id }};
+
+async function carregar() {
+    const v = await JF.api(`/vendas/api/${VENDA_ID}`);
+    const container = document.getElementById('conteudo-venda');
+
+    container.innerHTML = `
+        <div class="jf-card mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                <div>
+                    <h2 class="h5 mb-1">Venda ${v.numero} ${v.reembolsada ? '<span class="badge-jf badge-vermelho ms-2">Reembolsada</span>' : ''}</h2>
+                    <div class="text-suave small">${JF.data(v.criado_em)} · Vendedor(a): ${v.vendedor_nome}</div>
+                    <div class="text-suave small">Cliente: ${v.cliente_nome}</div>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/vendas/${v.id}/recibo" target="_blank" class="btn btn-jf-outline"><i class="bi bi-printer"></i> Recibo</a>
+                    ${(!v.reembolsada && window.JF_PAPEL === 'admin') ? `<button class="btn btn-outline-danger" onclick="reembolsar()"><i class="bi bi-arrow-counterclockwise"></i> Reembolsar</button>` : ''}
+                </div>
+            </div>
+        </div>
+
+        <div class="jf-card mb-3">
+            <h3 class="h6 mb-3">Itens</h3>
+            <div class="table-responsive">
+                <table class="jf-tabela">
+                    <thead><tr><th>Produto</th><th>Cor/Tam.</th><th>Qtd.</th><th>Preço Unit.</th><th>Subtotal</th></tr></thead>
+                    <tbody>
+                        ${v.itens.map(i => `<tr><td>${i.produto_nome}</td><td>${i.cor}/${i.tamanho}</td><td>${i.quantidade}</td><td>${JF.moeda(i.preco_venda_unit)}</td><td>${JF.moeda(i.subtotal)}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="jf-card">
+                    <h3 class="h6 mb-3">Pagamentos</h3>
+                    ${v.pagamentos.map(p => `<div class="d-flex justify-content-between small mb-1"><span>${rotuloForma(p.forma)}${p.parcelas ? ' (' + p.parcelas + 'x)' : ''}</span><span>${JF.moeda(p.valor)}</span></div>`).join('')}
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="jf-card">
+                    <h3 class="h6 mb-3">Resumo</h3>
+                    <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Subtotal</span><span>${JF.moeda(v.subtotal)}</span></div>
+                    <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Desconto ${v.cupom_codigo ? '(' + v.cupom_codigo + ')' : ''}</span><span>- ${JF.moeda(v.desconto)}</span></div>
+                    <div class="d-flex justify-content-between small mb-1"><span class="text-suave">Entrega (${v.entrega_tipo === 'motoboy' ? 'Motoboy' : 'Retirada'})</span><span>${JF.moeda(v.entrega_taxa)}</span></div>
+                    <hr style="border-color: var(--jf-borda)">
+                    <div class="d-flex justify-content-between fw-bold fs-5"><span>Total</span><span class="text-rosa">${JF.moeda(v.total)}</span></div>
+                    ${v.entrega_tipo === 'motoboy' ? `<div class="mt-2 small text-suave">Endereço: ${v.entrega_endereco}<br>Status: ${v.entrega_status}</div>` : ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function rotuloForma(forma) {
+    return { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Cartão de Crédito', cartao_debito: 'Cartão de Débito' }[forma] || forma;
+}
+
+async function reembolsar() {
+    if (!(await JF.confirmar('Confirmar reembolso desta venda? O estoque será devolvido e o valor sairá do caixa.', { perigo: true, textoConfirmar: 'Reembolsar' }))) return;
+    try {
+        await JF.api(`/vendas/api/${VENDA_ID}/reembolsar`, { method: 'POST' });
+        JF.toast('Venda reembolsada.');
+        carregar();
+    } catch (e) { JF.erro(e); }
+}
+
+window.JF_PAPEL = "{{ usuario_logado_papel }}";
+carregar();
+</script>
+{% endblock %}

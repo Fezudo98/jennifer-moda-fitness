@@ -1,0 +1,340 @@
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+
+from flask import Blueprint, render_template, request, jsonify
+
+from app.extensions import db
+from app.models import Venda, VendaItem, VendaPagamento, ProdutoVariacao, Cliente, Cupom, MovimentacaoCaixa
+from app.utils import (
+    token_requerido,
+    admin_requerido,
+    pagina_login_requerida,
+    registrar_log,
+    proximo_numero_venda,
+    parse_decimal_br,
+    ValorInvalidoError,
+)
+
+vendas_bp = Blueprint("vendas", __name__, url_prefix="/vendas")
+
+FORMAS_PAGAMENTO_VALIDAS = {"dinheiro", "pix", "cartao_credito", "cartao_debito"}
+
+
+def _d(valor) -> Decimal:
+    return parse_decimal_br(valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+# ---------------------------------------------------------------------------
+# Páginas
+# ---------------------------------------------------------------------------
+
+@vendas_bp.route("/pdv")
+@pagina_login_requerida
+def pagina_pdv():
+    return render_template("vendas/pdv.html")
+
+
+@vendas_bp.route("")
+@pagina_login_requerida
+def pagina_lista():
+    return render_template("vendas/lista.html")
+
+
+@vendas_bp.route("/<int:venda_id>")
+@pagina_login_requerida
+def pagina_detalhe(venda_id):
+    return render_template("vendas/detalhe.html", venda_id=venda_id)
+
+
+@vendas_bp.route("/<int:venda_id>/recibo")
+@pagina_login_requerida
+def pagina_recibo(venda_id):
+    return render_template("vendas/recibo.html", venda_id=venda_id)
+
+
+# ---------------------------------------------------------------------------
+# Cálculo de totais (compartilhado entre pré-visualização e criação)
+# ---------------------------------------------------------------------------
+
+def _calcular_totais(itens_dados, cupom_codigo, entrega_taxa):
+    erros = []
+    itens_processados = []
+    subtotal = Decimal("0.00")
+
+    for item in itens_dados:
+        variacao = db.session.get(ProdutoVariacao, item.get("variacao_id"))
+        try:
+            quantidade = int(item.get("quantidade") or 0)
+        except (TypeError, ValueError):
+            quantidade = 0
+
+        if not variacao or variacao.deletado:
+            erros.append("Um dos produtos do carrinho não foi encontrado.")
+            continue
+        if quantidade <= 0:
+            erros.append(f"Quantidade inválida para {variacao.sku}.")
+            continue
+        if variacao.quantidade < quantidade:
+            erros.append(f"Estoque insuficiente para {variacao.produto.nome} ({variacao.cor}/{variacao.tamanho}). Disponível: {variacao.quantidade}.")
+            continue
+
+        preco_unit = Decimal(str(variacao.preco_venda))
+        custo_unit = Decimal(str(variacao.preco_custo))
+        item_subtotal = (preco_unit * quantidade).quantize(Decimal("0.01"))
+        subtotal += item_subtotal
+
+        itens_processados.append({
+            "variacao": variacao,
+            "quantidade": quantidade,
+            "preco_unit": preco_unit,
+            "custo_unit": custo_unit,
+            "subtotal": item_subtotal,
+        })
+
+    if erros:
+        return None, erros
+
+    cupom = None
+    desconto = Decimal("0.00")
+    if cupom_codigo:
+        cupom = Cupom.query.filter_by(codigo=cupom_codigo.strip().upper()).first()
+        if not cupom or not cupom.ativo:
+            return None, ["Cupom inválido ou inativo."]
+
+        if cupom.aplicacao == "produtos":
+            ids_alvo = set(cupom.ids_produtos())
+            base = sum(
+                (i["subtotal"] for i in itens_processados if i["variacao"].produto_id in ids_alvo),
+                Decimal("0.00"),
+            )
+        else:
+            base = subtotal
+
+        if cupom.tipo == "percentual":
+            desconto = (base * Decimal(str(cupom.valor)) / Decimal("100")).quantize(Decimal("0.01"))
+        else:
+            desconto = min(base, Decimal(str(cupom.valor))).quantize(Decimal("0.01"))
+
+    try:
+        taxa = _d(entrega_taxa or 0)
+    except ValorInvalidoError:
+        return None, ["Taxa de entrega inválida."]
+    total = subtotal - desconto + taxa
+    if total < 0:
+        total = Decimal("0.00")
+
+    return {
+        "itens": itens_processados,
+        "subtotal": subtotal,
+        "desconto": desconto,
+        "taxa": taxa,
+        "total": total,
+        "cupom": cupom,
+    }, None
+
+
+@vendas_bp.route("/api/calcular", methods=["POST"])
+@token_requerido
+def api_calcular():
+    dados = request.get_json(silent=True) or {}
+    resultado, erros = _calcular_totais(
+        dados.get("itens") or [], dados.get("cupom_codigo"), dados.get("entrega_taxa")
+    )
+    if erros:
+        return jsonify({"erro": " | ".join(erros)}), 400
+
+    return jsonify({
+        "subtotal": float(resultado["subtotal"]),
+        "desconto": float(resultado["desconto"]),
+        "taxa": float(resultado["taxa"]),
+        "total": float(resultado["total"]),
+        "cupom_valido": bool(resultado["cupom"]),
+    })
+
+
+# ---------------------------------------------------------------------------
+# API - Vendas
+# ---------------------------------------------------------------------------
+
+@vendas_bp.route("/api", methods=["GET"])
+@token_requerido
+def api_listar_vendas():
+    usuario = request.usuario_atual
+    query = Venda.query
+    if not usuario.is_admin:
+        query = query.filter_by(vendedor_id=usuario.id)
+
+    data_inicio = request.args.get("data_inicio")
+    data_fim = request.args.get("data_fim")
+    if data_inicio:
+        query = query.filter(Venda.criado_em >= datetime.fromisoformat(data_inicio))
+    if data_fim:
+        query = query.filter(Venda.criado_em <= datetime.fromisoformat(data_fim + "T23:59:59"))
+
+    vendas = query.order_by(Venda.criado_em.desc()).limit(500).all()
+    return jsonify([v.to_dict(detalhado=False) for v in vendas])
+
+
+@vendas_bp.route("/api/<int:venda_id>", methods=["GET"])
+@token_requerido
+def api_obter_venda(venda_id):
+    usuario = request.usuario_atual
+    venda = db.session.get(Venda, venda_id)
+    if not venda:
+        return jsonify({"erro": "Venda não encontrada."}), 404
+    if not usuario.is_admin and venda.vendedor_id != usuario.id:
+        return jsonify({"erro": "Você só pode visualizar suas próprias vendas."}), 403
+    return jsonify(venda.to_dict())
+
+
+@vendas_bp.route("/api", methods=["POST"])
+@token_requerido
+def api_criar_venda():
+    usuario = request.usuario_atual
+    dados = request.get_json(silent=True) or {}
+
+    itens_dados = dados.get("itens") or []
+    if not itens_dados:
+        return jsonify({"erro": "Adicione ao menos um produto ao carrinho."}), 400
+
+    pagamentos_dados = dados.get("pagamentos") or []
+    if not pagamentos_dados:
+        return jsonify({"erro": "Informe ao menos uma forma de pagamento."}), 400
+
+    entrega_tipo = dados.get("entrega_tipo") or "retirada"
+    if entrega_tipo not in ("retirada", "motoboy"):
+        return jsonify({"erro": "Tipo de entrega inválido."}), 400
+    entrega_endereco = (dados.get("entrega_endereco") or "").strip()
+    if entrega_tipo == "motoboy" and not entrega_endereco:
+        return jsonify({"erro": "Informe o endereço de entrega para vendas com motoboy."}), 400
+
+    resultado, erros = _calcular_totais(itens_dados, dados.get("cupom_codigo"), dados.get("entrega_taxa"))
+    if erros:
+        return jsonify({"erro": " | ".join(erros)}), 400
+
+    total_pagamentos = Decimal("0.00")
+    total_dinheiro = Decimal("0.00")
+    for p in pagamentos_dados:
+        forma = p.get("forma")
+        if forma not in FORMAS_PAGAMENTO_VALIDAS:
+            return jsonify({"erro": "Forma de pagamento inválida."}), 400
+        try:
+            valor = _d(p.get("valor"))
+        except Exception:
+            return jsonify({"erro": "Valor de pagamento inválido."}), 400
+        if valor <= 0:
+            return jsonify({"erro": "O valor de cada pagamento deve ser maior que zero."}), 400
+        total_pagamentos += valor
+        if forma == "dinheiro":
+            total_dinheiro += valor
+
+    total_venda = resultado["total"]
+    if total_pagamentos < total_venda:
+        return jsonify({"erro": f"Valor pago (R$ {total_pagamentos}) é menor que o total da venda (R$ {total_venda})."}), 400
+
+    troco = total_pagamentos - total_venda
+    if troco > 0 and total_dinheiro < troco:
+        return jsonify({"erro": "O troco só pode ser dado sobre pagamentos em dinheiro."}), 400
+
+    cliente_id = dados.get("cliente_id") or None
+    if cliente_id and not db.session.get(Cliente, cliente_id):
+        return jsonify({"erro": "Cliente não encontrado."}), 404
+
+    venda = Venda(
+        numero=proximo_numero_venda(),
+        cliente_id=cliente_id,
+        vendedor_id=usuario.id,
+        subtotal=resultado["subtotal"],
+        desconto=resultado["desconto"],
+        total=total_venda,
+        cupom_id=resultado["cupom"].id if resultado["cupom"] else None,
+        entrega_tipo=entrega_tipo,
+        entrega_endereco=entrega_endereco if entrega_tipo == "motoboy" else None,
+        entrega_taxa=resultado["taxa"],
+        entrega_status="pendente" if entrega_tipo == "motoboy" else None,
+    )
+    db.session.add(venda)
+    db.session.flush()
+
+    for item in resultado["itens"]:
+        variacao = item["variacao"]
+        variacao.quantidade -= item["quantidade"]
+        if variacao.quantidade < 0:
+            db.session.rollback()
+            return jsonify({"erro": f"Estoque insuficiente para {variacao.sku}."}), 400
+
+        db.session.add(VendaItem(
+            venda_id=venda.id,
+            variacao_id=variacao.id,
+            produto_nome=variacao.produto.nome,
+            sku=variacao.sku,
+            cor=variacao.cor,
+            tamanho=variacao.tamanho,
+            quantidade=item["quantidade"],
+            preco_venda_unit=item["preco_unit"],
+            preco_custo_unit=item["custo_unit"],
+            subtotal=item["subtotal"],
+        ))
+
+    troco_restante = troco
+    for p in pagamentos_dados:
+        valor = _d(p.get("valor"))
+        troco_pagamento = Decimal("0.00")
+        if p.get("forma") == "dinheiro" and troco_restante > 0:
+            troco_pagamento = min(valor, troco_restante)
+            troco_restante -= troco_pagamento
+
+        db.session.add(VendaPagamento(
+            venda_id=venda.id,
+            forma=p.get("forma"),
+            valor=valor,
+            parcelas=p.get("parcelas") if p.get("forma") == "cartao_credito" else None,
+            troco=troco_pagamento,
+        ))
+
+    if total_dinheiro > 0:
+        db.session.add(MovimentacaoCaixa(
+            tipo="entrada", valor=total_dinheiro, motivo="venda",
+            observacao=f"Recebimento em dinheiro da venda {venda.numero}.",
+            usuario_id=usuario.id, venda_id=venda.id,
+        ))
+    if troco > 0:
+        db.session.add(MovimentacaoCaixa(
+            tipo="saida", valor=troco, motivo="troco",
+            observacao=f"Troco entregue na venda {venda.numero}.",
+            usuario_id=usuario.id, venda_id=venda.id,
+        ))
+
+    registrar_log("venda_registrada", f"Venda {venda.numero} registrada no valor de R$ {total_venda}.", usuario_id=usuario.id)
+    db.session.commit()
+
+    return jsonify(venda.to_dict()), 201
+
+
+@vendas_bp.route("/api/<int:venda_id>/reembolsar", methods=["POST"])
+@token_requerido
+@admin_requerido
+def api_reembolsar_venda(venda_id):
+    venda = db.session.get(Venda, venda_id)
+    if not venda:
+        return jsonify({"erro": "Venda não encontrada."}), 404
+    if venda.reembolsada:
+        return jsonify({"erro": "Esta venda já foi reembolsada."}), 400
+
+    for item in venda.itens:
+        variacao = db.session.get(ProdutoVariacao, item.variacao_id)
+        if variacao:
+            variacao.quantidade += item.quantidade
+
+    venda.reembolsada = True
+    venda.reembolsada_em = datetime.utcnow()
+
+    db.session.add(MovimentacaoCaixa(
+        tipo="saida", valor=venda.total, motivo="reembolso",
+        observacao=f"Reembolso da venda {venda.numero}.",
+        usuario_id=request.usuario_atual.id, venda_id=venda.id,
+    ))
+
+    registrar_log("venda_reembolsada", f"Venda {venda.numero} reembolsada (R$ {venda.total}).")
+    db.session.commit()
+    return jsonify(venda.to_dict())
