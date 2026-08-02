@@ -9,8 +9,7 @@ rem   para o computador da loja (pendrive, e-mail, WhatsApp...).
 rem   Todo o resto do sistema e baixado automaticamente do GitHub.
 rem ============================================================
 
-rem >>> Edite a linha abaixo com a URL do repositorio + token <<<
-set REPO_URL=https://SEU_TOKEN_AQUI@github.com/USUARIO/REPOSITORIO.git
+set REPO_URL=https://github.com/Fezudo98/jennifer-moda-fitness.git
 
 set PASTA=%USERPROFILE%\Desktop\Jennifer Moda Fitness
 
