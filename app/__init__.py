@@ -4,7 +4,7 @@ from flask import Flask, redirect, url_for
 
 from config import Config
 from app.extensions import db, migrate, bcrypt, limiter
-from app.utils import formatar_moeda, formatar_cpf
+from app.utils import formatar_moeda, formatar_cpf, formatar_data_br
 
 
 def create_app(config_class=Config):
@@ -14,6 +14,8 @@ def create_app(config_class=Config):
     os.makedirs(os.path.join(app.instance_path), exist_ok=True)
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
     os.makedirs(app.config["BARCODE_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["COMPROVANTES_VENDAS_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["COMPROVANTES_PAGAMENTOS_FOLDER"], exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -51,6 +53,7 @@ def create_app(config_class=Config):
 
     app.jinja_env.filters["moeda"] = formatar_moeda
     app.jinja_env.filters["cpf"] = formatar_cpf
+    app.jinja_env.filters["data_br"] = formatar_data_br
 
     @app.context_processor
     def inject_globals():

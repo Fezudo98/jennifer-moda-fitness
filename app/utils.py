@@ -75,6 +75,13 @@ def validar_cpf(cpf: str) -> bool:
     return True
 
 
+def formatar_data_br(valor) -> str:
+    """Formata um datetime no padrão brasileiro: 31/12/2026 23:59"""
+    if not valor:
+        return "-"
+    return valor.strftime("%d/%m/%Y %H:%M")
+
+
 def formatar_cpf(cpf: str) -> str:
     cpf = re.sub(r"\D", "", cpf or "")
     if len(cpf) != 11:
@@ -146,6 +153,18 @@ def pagina_login_requerida(f):
     return decorador
 
 
+def usuario_da_sessao():
+    """Retorna o Usuario logado via sessão de navegador (não JWT). Usado em
+    rotas que servem arquivos para download por navegação direta (<a href>),
+    onde o cabeçalho x-access-token não é enviado pelo navegador."""
+    from app.models import Usuario
+
+    usuario_id = session.get("usuario_id")
+    if not usuario_id:
+        return None
+    return db.session.get(Usuario, usuario_id)
+
+
 def pagina_admin_requerida(f):
     @wraps(f)
     def decorador(*args, **kwargs):
@@ -205,3 +224,51 @@ def proximo_numero_venda() -> str:
 
     ultimo = db.session.query(db.func.max(Venda.id)).scalar() or 0
     return f"V{ultimo + 1:06d}"
+
+
+# ---------------------------------------------------------------------------
+# Comprovante de venda (PDF)
+# ---------------------------------------------------------------------------
+
+def caminho_comprovante_venda(venda_id: int) -> str:
+    pasta = current_app.config["COMPROVANTES_VENDAS_FOLDER"]
+    return os.path.join(pasta, f"venda_{venda_id}.pdf")
+
+
+ROTULOS_FORMA_PAGAMENTO = {
+    "dinheiro": "Dinheiro",
+    "pix": "PIX",
+    "cartao_credito": "Cartão de Crédito",
+    "cartao_debito": "Cartão de Débito",
+}
+
+
+def gerar_comprovante_pdf(venda) -> str:
+    """Gera (ou regenera) o PDF do comprovante de uma venda e o guarda em
+    disco. Retorna o caminho do arquivo. Falhas aqui nunca devem impedir a
+    venda de ser concluída — quem chama deve tratar exceções."""
+    from flask import render_template
+    from xhtml2pdf import pisa
+
+    caminho_logo = os.path.join(current_app.root_path, "static", "img", "logo.png")
+    if not os.path.exists(caminho_logo):
+        caminho_logo = None
+
+    html = render_template(
+        "vendas/recibo_pdf.html",
+        v=venda,
+        rotulos_forma=ROTULOS_FORMA_PAGAMENTO,
+        caminho_logo=caminho_logo,
+    )
+
+    pasta = current_app.config["COMPROVANTES_VENDAS_FOLDER"]
+    os.makedirs(pasta, exist_ok=True)
+    caminho = caminho_comprovante_venda(venda.id)
+
+    with open(caminho, "wb") as arquivo:
+        resultado = pisa.CreatePDF(html, dest=arquivo, encoding="utf-8")
+
+    if resultado.err:
+        raise RuntimeError(f"Falha ao gerar PDF do comprovante da venda {venda.numero}.")
+
+    return caminho

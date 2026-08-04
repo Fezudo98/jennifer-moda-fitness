@@ -1,7 +1,11 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from flask import Blueprint, render_template, request, jsonify
+import os
+import uuid
+
+from flask import Blueprint, render_template, request, jsonify, current_app, send_file
+from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import Venda, VendaItem, VendaPagamento, ProdutoVariacao, Cliente, Cupom, MovimentacaoCaixa
@@ -13,6 +17,9 @@ from app.utils import (
     proximo_numero_venda,
     parse_decimal_br,
     ValorInvalidoError,
+    gerar_comprovante_pdf,
+    caminho_comprovante_venda,
+    usuario_da_sessao,
 )
 
 vendas_bp = Blueprint("vendas", __name__, url_prefix="/vendas")
@@ -308,6 +315,14 @@ def api_criar_venda():
     registrar_log("venda_registrada", f"Venda {venda.numero} registrada no valor de R$ {total_venda}.", usuario_id=usuario.id)
     db.session.commit()
 
+    try:
+        gerar_comprovante_pdf(venda)
+    except Exception:
+        # A venda já está concluída e salva; a falha em gerar o PDF não pode
+        # desfazer a venda. O comprovante pode ser gerado novamente sob
+        # demanda ao ser baixado.
+        current_app.logger.exception(f"Falha ao gerar comprovante em PDF da venda {venda.numero}.")
+
     return jsonify(venda.to_dict()), 201
 
 
@@ -337,4 +352,114 @@ def api_reembolsar_venda(venda_id):
 
     registrar_log("venda_reembolsada", f"Venda {venda.numero} reembolsada (R$ {venda.total}).")
     db.session.commit()
+
+    try:
+        gerar_comprovante_pdf(venda)
+    except Exception:
+        current_app.logger.exception(f"Falha ao regenerar comprovante em PDF da venda {venda.numero}.")
+
     return jsonify(venda.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Comprovantes (PDF da venda + anexos de pagamento)
+# ---------------------------------------------------------------------------
+
+EXTENSOES_COMPROVANTE_PERMITIDAS = {"png", "jpg", "jpeg", "webp", "pdf"}
+
+
+def _verificar_permissao_venda(venda, usuario):
+    """Vendedor só acessa comprovantes das próprias vendas; admin acessa tudo."""
+    return usuario.is_admin or venda.vendedor_id == usuario.id
+
+
+@vendas_bp.route("/<int:venda_id>/comprovante")
+@pagina_login_requerida
+def api_baixar_comprovante_venda(venda_id):
+    venda = db.session.get(Venda, venda_id)
+    if not venda:
+        return jsonify({"erro": "Venda não encontrada."}), 404
+    if not _verificar_permissao_venda(venda, usuario_da_sessao()):
+        return jsonify({"erro": "Você só pode acessar comprovantes das próprias vendas."}), 403
+
+    caminho = caminho_comprovante_venda(venda.id)
+    if not os.path.exists(caminho):
+        try:
+            gerar_comprovante_pdf(venda)
+        except Exception:
+            return jsonify({"erro": "Não foi possível gerar o comprovante desta venda."}), 500
+
+    return send_file(caminho, as_attachment=True, download_name=f"comprovante_{venda.numero}.pdf")
+
+
+@vendas_bp.route("/api/pagamentos/<int:pagamento_id>/comprovante", methods=["POST"])
+@token_requerido
+def api_anexar_comprovante_pagamento(pagamento_id):
+    pagamento = db.session.get(VendaPagamento, pagamento_id)
+    if not pagamento:
+        return jsonify({"erro": "Pagamento não encontrado."}), 404
+    if not _verificar_permissao_venda(pagamento.venda, request.usuario_atual):
+        return jsonify({"erro": "Você só pode anexar comprovantes das próprias vendas."}), 403
+
+    arquivo = request.files.get("comprovante")
+    if not arquivo or not arquivo.filename:
+        return jsonify({"erro": "Nenhum arquivo enviado."}), 400
+
+    extensao = arquivo.filename.rsplit(".", 1)[-1].lower() if "." in arquivo.filename else ""
+    if extensao not in EXTENSOES_COMPROVANTE_PERMITIDAS:
+        return jsonify({"erro": "Envie uma imagem (PNG, JPG, WEBP) ou PDF."}), 400
+
+    pasta = current_app.config["COMPROVANTES_PAGAMENTOS_FOLDER"]
+    os.makedirs(pasta, exist_ok=True)
+
+    # Remove o comprovante anterior, se houver, para não acumular arquivos órfãos.
+    if pagamento.comprovante_arquivo:
+        caminho_antigo = os.path.join(pasta, pagamento.comprovante_arquivo)
+        if os.path.exists(caminho_antigo):
+            os.remove(caminho_antigo)
+
+    nome_arquivo = f"pagamento_{pagamento.id}_{uuid.uuid4().hex}.{extensao}"
+    arquivo.save(os.path.join(pasta, secure_filename(nome_arquivo)))
+    pagamento.comprovante_arquivo = secure_filename(nome_arquivo)
+
+    registrar_log("comprovante_pagamento_anexado", f"Comprovante anexado ao pagamento da venda {pagamento.venda.numero}.")
+    db.session.commit()
+    return jsonify(pagamento.to_dict()), 201
+
+
+@vendas_bp.route("/api/pagamentos/<int:pagamento_id>/comprovante", methods=["GET"])
+@pagina_login_requerida
+def api_baixar_comprovante_pagamento(pagamento_id):
+    pagamento = db.session.get(VendaPagamento, pagamento_id)
+    if not pagamento or not pagamento.comprovante_arquivo:
+        return jsonify({"erro": "Este pagamento não tem comprovante anexado."}), 404
+    if not _verificar_permissao_venda(pagamento.venda, usuario_da_sessao()):
+        return jsonify({"erro": "Você só pode acessar comprovantes das próprias vendas."}), 403
+
+    pasta = current_app.config["COMPROVANTES_PAGAMENTOS_FOLDER"]
+    caminho = os.path.join(pasta, pagamento.comprovante_arquivo)
+    if not os.path.exists(caminho):
+        return jsonify({"erro": "Arquivo do comprovante não encontrado."}), 404
+
+    return send_file(caminho)
+
+
+@vendas_bp.route("/api/pagamentos/<int:pagamento_id>/comprovante", methods=["DELETE"])
+@token_requerido
+def api_remover_comprovante_pagamento(pagamento_id):
+    pagamento = db.session.get(VendaPagamento, pagamento_id)
+    if not pagamento:
+        return jsonify({"erro": "Pagamento não encontrado."}), 404
+    if not _verificar_permissao_venda(pagamento.venda, request.usuario_atual):
+        return jsonify({"erro": "Você só pode remover comprovantes das próprias vendas."}), 403
+
+    if pagamento.comprovante_arquivo:
+        pasta = current_app.config["COMPROVANTES_PAGAMENTOS_FOLDER"]
+        caminho = os.path.join(pasta, pagamento.comprovante_arquivo)
+        if os.path.exists(caminho):
+            os.remove(caminho)
+        pagamento.comprovante_arquivo = None
+        registrar_log("comprovante_pagamento_removido", f"Comprovante removido do pagamento da venda {pagamento.venda.numero}.")
+        db.session.commit()
+
+    return jsonify({"ok": True})

@@ -340,6 +340,7 @@ class VendaPagamento(db.Model):
     valor = db.Column(db.Numeric(10, 2), nullable=False)
     parcelas = db.Column(db.Integer, nullable=True)
     troco = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    comprovante_arquivo = db.Column(db.String(255), nullable=True)  # comprovante da maquininha/Pix anexado
 
     def to_dict(self):
         return {
@@ -348,6 +349,7 @@ class VendaPagamento(db.Model):
             "valor": float(self.valor),
             "parcelas": self.parcelas,
             "troco": float(self.troco),
+            "tem_comprovante": bool(self.comprovante_arquivo),
         }
 
 

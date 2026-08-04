@@ -41,6 +41,10 @@ class Config:
 
     UPLOAD_FOLDER = os.path.join(BASE_DIR, "app", "static", "uploads")
     BARCODE_FOLDER = os.path.join(BASE_DIR, "app", "static", "barcodes")
+    # Comprovantes ficam fora de app/static/ (que é servido sem autenticação)
+    # porque contêm dados financeiros e do cliente — só saem por rota protegida.
+    COMPROVANTES_VENDAS_FOLDER = os.path.join(INSTANCE_DIR, "comprovantes", "vendas")
+    COMPROVANTES_PAGAMENTOS_FOLDER = os.path.join(INSTANCE_DIR, "comprovantes", "pagamentos")
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
 
     ESTOQUE_BAIXO_PADRAO = 5

@@ -432,7 +432,7 @@ def api_buscar_variacoes():
 
 
 @produtos_bp.route("/api/variacoes/<int:variacao_id>/codigo-barras")
-@token_requerido
+@pagina_login_requerida
 def api_codigo_barras(variacao_id):
     variacao = db.session.get(ProdutoVariacao, variacao_id)
     if not variacao:

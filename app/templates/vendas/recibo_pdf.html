@@ -1,0 +1,97 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page { size: A4; margin: 2cm 1.8cm; }
+    body { font-family: Helvetica, sans-serif; font-size: 11px; color: #222; }
+    .cabecalho { text-align: center; margin-bottom: 14px; }
+    .cabecalho img { width: 60px; height: 60px; border-radius: 30px; }
+    .cabecalho h1 { font-size: 15px; margin: 6px 0 0; }
+    .cabecalho .sub { font-size: 9px; letter-spacing: 2px; color: #db2777; font-weight: bold; }
+    .titulo-doc { text-align: center; font-size: 12px; font-weight: bold; margin: 10px 0 16px; text-transform: uppercase; }
+    table.dados { width: 100%; margin-bottom: 12px; }
+    table.dados td { padding: 2px 0; font-size: 10.5px; }
+    table.itens { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    table.itens th { background: #f2f2f2; text-align: left; padding: 5px 6px; font-size: 9.5px; border-bottom: 1px solid #ccc; }
+    table.itens td { padding: 5px 6px; font-size: 10px; border-bottom: 1px solid #eee; }
+    table.resumo { width: 60%; margin-left: 40%; margin-top: 6px; }
+    table.resumo td { padding: 2px 0; font-size: 10.5px; }
+    table.resumo .total td { font-size: 13px; font-weight: bold; border-top: 1px solid #333; padding-top: 5px; }
+    .secao-titulo { font-size: 10.5px; font-weight: bold; margin: 14px 0 4px; color: #333; }
+    .rodape { text-align: center; font-size: 8.5px; color: #777; margin-top: 26px; }
+    .direita { text-align: right; }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+    {% if caminho_logo %}<img src="{{ caminho_logo }}">{% endif %}
+    <h1>Jennifer Moda Fitness</h1>
+    <div class="sub">COMPROVANTE DE VENDA</div>
+</div>
+
+<div class="titulo-doc">Venda {{ v.numero }}</div>
+
+<table class="dados">
+    <tr><td><b>Data:</b> {{ v.criado_em|data_br }}</td><td class="direita"><b>Vendedor(a):</b> {{ v.vendedor.nome if v.vendedor else '-' }}</td></tr>
+    <tr><td><b>Cliente:</b> {{ v.cliente.nome if v.cliente else 'Consumidor Final' }}</td><td class="direita"><b>Entrega:</b> {{ 'Motoboy' if v.entrega_tipo == 'motoboy' else 'Retirada na loja' }}</td></tr>
+    {% if v.entrega_tipo == 'motoboy' and v.entrega_endereco %}
+    <tr><td colspan="2"><b>Endereço de entrega:</b> {{ v.entrega_endereco }}</td></tr>
+    {% endif %}
+</table>
+
+<table class="itens">
+    <thead>
+        <tr>
+            <th>Produto</th>
+            <th>Cor / Tamanho</th>
+            <th>Qtd.</th>
+            <th class="direita">Preço Unit.</th>
+            <th class="direita">Subtotal</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in v.itens %}
+        <tr>
+            <td>{{ item.produto_nome }}</td>
+            <td>{{ item.cor }} / {{ item.tamanho }}</td>
+            <td>{{ item.quantidade }}</td>
+            <td class="direita">{{ item.preco_venda_unit|moeda }}</td>
+            <td class="direita">{{ item.subtotal|moeda }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<table class="resumo">
+    <tr><td>Subtotal</td><td class="direita">{{ v.subtotal|moeda }}</td></tr>
+    <tr><td>Desconto{% if v.cupom %} ({{ v.cupom.codigo }}){% endif %}</td><td class="direita">- {{ v.desconto|moeda }}</td></tr>
+    <tr><td>Taxa de entrega</td><td class="direita">{{ v.entrega_taxa|moeda }}</td></tr>
+    <tr class="total"><td>TOTAL</td><td class="direita">{{ v.total|moeda }}</td></tr>
+</table>
+
+<div class="secao-titulo">Pagamento</div>
+<table class="dados">
+    {% for p in v.pagamentos %}
+    <tr>
+        <td>{{ rotulos_forma.get(p.forma, p.forma) }}{% if p.parcelas %} ({{ p.parcelas }}x){% endif %}</td>
+        <td class="direita">{{ p.valor|moeda }}</td>
+    </tr>
+    {% endfor %}
+    {% set troco_total = v.pagamentos|sum(attribute='troco') %}
+    {% if troco_total and troco_total > 0 %}
+    <tr><td>Troco</td><td class="direita">{{ troco_total|moeda }}</td></tr>
+    {% endif %}
+</table>
+
+{% if v.reembolsada %}
+<div class="secao-titulo" style="color:#c0392b;">Venda reembolsada em {{ v.reembolsada_em|data_br }}</div>
+{% endif %}
+
+<div class="rodape">
+    Jennifer Moda Fitness &middot; Comprovante gerado automaticamente pelo sistema em {{ v.criado_em|data_br }}
+</div>
+
+</body>
+</html>

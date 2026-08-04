@@ -26,6 +26,7 @@ async function carregar() {
                 </div>
                 <div class="d-flex gap-2">
                     <a href="/vendas/${v.id}/recibo" target="_blank" class="btn btn-jf-outline"><i class="bi bi-printer"></i> Recibo</a>
+                    <a href="/vendas/${v.id}/comprovante" class="btn btn-jf-outline"><i class="bi bi-file-earmark-pdf"></i> Comprovante (PDF)</a>
                     ${(!v.reembolsada && window.JF_PAPEL === 'admin') ? `<button class="btn btn-outline-danger" onclick="reembolsar()"><i class="bi bi-arrow-counterclockwise"></i> Reembolsar</button>` : ''}
                 </div>
             </div>
@@ -47,7 +48,23 @@ async function carregar() {
             <div class="col-md-6">
                 <div class="jf-card">
                     <h3 class="h6 mb-3">Pagamentos</h3>
-                    ${v.pagamentos.map(p => `<div class="d-flex justify-content-between small mb-1"><span>${rotuloForma(p.forma)}${p.parcelas ? ' (' + p.parcelas + 'x)' : ''}</span><span>${JF.moeda(p.valor)}</span></div>`).join('')}
+                    ${v.pagamentos.map(p => `
+                        <div class="d-flex justify-content-between align-items-center small mb-2 pb-2 border-bottom" style="border-color: var(--jf-borda) !important">
+                            <div>
+                                <div>${rotuloForma(p.forma)}${p.parcelas ? ' (' + p.parcelas + 'x)' : ''}</div>
+                                <div class="text-suave">${JF.moeda(p.valor)}</div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                ${p.tem_comprovante ? `
+                                    <a href="/vendas/api/pagamentos/${p.id}/comprovante" target="_blank" class="btn btn-sm btn-jf-outline" title="Ver comprovante"><i class="bi bi-paperclip"></i> Ver</a>
+                                    <button class="btn btn-sm text-danger" title="Remover comprovante" onclick="removerComprovantePagamento(${p.id})"><i class="bi bi-trash"></i></button>
+                                ` : `
+                                    <button class="btn btn-sm btn-jf-outline" onclick="document.getElementById('input-comprovante-${p.id}').click()"><i class="bi bi-paperclip"></i> Anexar</button>
+                                    <input type="file" id="input-comprovante-${p.id}" class="d-none" accept="image/*,.pdf" onchange="anexarComprovantePagamento(${p.id}, this.files[0])">
+                                `}
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
             <div class="col-md-6">
@@ -67,6 +84,26 @@ async function carregar() {
 
 function rotuloForma(forma) {
     return { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Cartão de Crédito', cartao_debito: 'Cartão de Débito' }[forma] || forma;
+}
+
+async function anexarComprovantePagamento(pagamentoId, arquivo) {
+    if (!arquivo) return;
+    const formData = new FormData();
+    formData.append('comprovante', arquivo);
+    try {
+        await JF.api(`/vendas/api/pagamentos/${pagamentoId}/comprovante`, { method: 'POST', body: formData });
+        JF.toast('Comprovante anexado.');
+        carregar();
+    } catch (e) { JF.erro(e); }
+}
+
+async function removerComprovantePagamento(pagamentoId) {
+    if (!(await JF.confirmar('Remover este comprovante?', { perigo: true }))) return;
+    try {
+        await JF.api(`/vendas/api/pagamentos/${pagamentoId}/comprovante`, { method: 'DELETE' });
+        JF.toast('Comprovante removido.');
+        carregar();
+    } catch (e) { JF.erro(e); }
 }
 
 async function reembolsar() {

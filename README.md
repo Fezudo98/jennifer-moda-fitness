@@ -43,7 +43,7 @@ Na primeira vez que o sistema roda, ele gera automaticamente chaves de seguranç
 
 ### Backup
 
-Todos os dados (produtos, vendas, clientes, caixa) ficam num único arquivo: `instance/jennifer.db`. Faça uma cópia periódica desse arquivo (ex: para um pendrive ou nuvem) — é o que garante que nada se perde se o computador tiver problema.
+Todos os dados (produtos, vendas, clientes, caixa) ficam num único arquivo: `instance/jennifer.db`. Os comprovantes de venda em PDF e os anexos de pagamento (foto da maquininha/Pix) ficam em `instance/comprovantes/`. Faça uma cópia periódica de toda a pasta `instance/` (ex: para um pendrive ou nuvem) — é o que garante que nada se perde se o computador tiver problema.
 
 ---
 
@@ -90,7 +90,7 @@ Iniciar Sistema.bat      # abrir o sistema no dia a dia (atualiza sozinho antes 
 
 ## Módulos
 
-- **PDV (Nova Venda)** — busca por nome/SKU/código de barras, múltiplos pagamentos, cupom, cliente, entrega (retirada ou motoboy), recibo imprimível, reembolso (admin).
+- **PDV (Nova Venda)** — busca por nome/SKU/código de barras, múltiplos pagamentos, cupom, cliente, entrega (retirada ou motoboy), recibo imprimível, comprovante em PDF gerado e guardado automaticamente a cada venda, anexo do comprovante da maquininha/Pix por pagamento, reembolso (admin).
 - **Produtos & Estoque** — variações por cor/tamanho, SKU e código de barras automáticos, imagens, edição rápida de preço/estoque, categorias, soft delete.
 - **Clientes** — cadastro com validação de CPF, busca rápida, histórico de compras.
 - **Cupons** — percentual ou valor fixo, aplicável ao total ou a produtos específicos, ativar/desativar.
