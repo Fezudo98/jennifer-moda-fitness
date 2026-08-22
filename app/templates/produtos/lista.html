@@ -3,6 +3,24 @@
 {% block titulo_pagina %}Produtos &amp; Estoque{% endblock %}
 
 {% block conteudo %}
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-4 col-xl">
+        <div class="jf-kpi h-100"><div class="rotulo">Peças</div><div class="valor" id="stat-pecas">-</div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="jf-kpi h-100"><div class="rotulo">Variações</div><div class="valor" id="stat-variacoes">-</div></div>
+    </div>
+    <div class="col-6 col-md-4 col-xl">
+        <div class="jf-kpi h-100"><div class="rotulo"><i class="bi bi-exclamation-triangle text-amarelo"></i> Estoque baixo</div><div class="valor" id="stat-estoque-baixo">-</div></div>
+    </div>
+    <div class="col-6 col-md-6 col-xl">
+        <div class="jf-kpi h-100"><div class="rotulo"><i class="bi bi-box-seam text-rosa"></i> Sem estoque</div><div class="valor" id="stat-sem-estoque">-</div></div>
+    </div>
+    <div class="col-12 col-md-6 col-xl">
+        <div class="jf-kpi destaque h-100"><div class="rotulo">Valor em estoque (custo)</div><div class="valor" id="stat-valor-estoque">-</div></div>
+    </div>
+</div>
+
 <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
     <div class="d-flex flex-wrap gap-2 flex-grow-1">
         <input type="text" id="busca" class="form-control" style="max-width:280px" placeholder="Buscar por nome, SKU ou código de barras...">
@@ -13,16 +31,21 @@
             <input class="form-check-input" type="checkbox" id="filtro-estoque-baixo">
             <label class="form-check-label small text-suave" for="filtro-estoque-baixo">Só estoque baixo</label>
         </div>
+        <button class="btn btn-sm btn-jf-outline" id="btn-expandir-tudo"><i class="bi bi-arrows-collapse"></i> Recolher tudo</button>
     </div>
     <div class="d-flex gap-2">
         <button class="btn btn-jf-outline" id="btn-categorias"><i class="bi bi-tags"></i> Categorias</button>
+        <button class="btn btn-jf-outline" id="btn-nova-variacao"><i class="bi bi-palette"></i> Nova Variação</button>
         <a href="{{ url_for('produtos.pagina_novo') }}" class="btn btn-jf"><i class="bi bi-plus-lg"></i> Novo Produto</a>
     </div>
 </div>
 
 <div class="d-none align-items-center gap-2 mb-3 jf-card" id="barra-selecao">
     <span class="small"><span id="qtd-selecionados">0</span> selecionado(s)</span>
-    <button class="btn btn-sm btn-outline-danger ms-auto" id="btn-excluir-selecionados"><i class="bi bi-trash"></i> Excluir selecionados</button>
+    <div class="ms-auto d-flex gap-2">
+        <button class="btn btn-sm btn-jf-outline" id="btn-zerar-estoque-selecionados"><i class="bi bi-box"></i> Zerar estoque</button>
+        <button class="btn btn-sm btn-outline-danger" id="btn-excluir-selecionados"><i class="bi bi-trash"></i> Excluir selecionados</button>
+    </div>
 </div>
 
 <div id="lista-produtos"></div>
@@ -71,6 +94,42 @@
                     <span class="small text-suave">Calculando impacto...</span>
                 </div>
                 <button class="btn btn-jf w-100" id="btn-confirmar-exclusao-categoria">Confirmar exclusão</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nova Variação (cor/tamanho de um produto já existente) -->
+<div class="modal fade" id="modal-nova-variacao" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nova Variação (cor/tamanho)</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-2">
+                    <label>Nome do produto</label>
+                    <input type="text" class="form-control" id="nv-nome" list="nv-nomes-datalist" autocomplete="off" placeholder="Digite o nome do produto já cadastrado...">
+                    <datalist id="nv-nomes-datalist"></datalist>
+                    <div class="small mt-1" id="nv-status"></div>
+                </div>
+                <div class="row g-2" id="nv-campos-variacao" style="display:none">
+                    <div class="col-6"><label class="small">Cor</label><input type="text" class="form-control form-control-sm" id="nv-cor"></div>
+                    <div class="col-6">
+                        <label class="small">Cor (hex)</label>
+                        <input type="color" class="form-control form-control-sm form-control-color w-100" id="nv-cor-hex" value="#ec4899">
+                    </div>
+                    <div class="col-4"><label class="small">Tamanho</label><input type="text" class="form-control form-control-sm" id="nv-tamanho"></div>
+                    <div class="col-4"><label class="small">Custo (R$)</label><input type="text" class="form-control form-control-sm" id="nv-preco-custo"></div>
+                    <div class="col-4"><label class="small">Venda (R$)</label><input type="text" class="form-control form-control-sm" id="nv-preco-venda"></div>
+                    <div class="col-4"><label class="small">Qtd. inicial</label><input type="number" min="0" class="form-control form-control-sm" id="nv-qtd" value="0"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-jf-outline" data-bs-dismiss="modal">Cancelar</button>
+                <a href="{{ url_for('produtos.pagina_novo') }}" class="btn btn-jf-outline d-none" id="nv-btn-ir-novo-produto">Cadastrar como produto novo</a>
+                <button class="btn btn-jf" id="nv-btn-salvar" disabled>Adicionar variação</button>
             </div>
         </div>
     </div>
@@ -209,29 +268,32 @@ function renderizarProdutos() {
                             <button class="btn btn-sm btn-outline-danger" onclick="excluirProduto(${p.id})"><i class="bi bi-trash"></i></button>
                         </div>
                     </div>
-                    <div class="table-responsive mt-3">
-                        <table class="jf-tabela">
-                            <thead><tr><th>Cor</th><th>Tam.</th><th>SKU</th><th>Preço</th><th>Estoque</th></tr></thead>
-                            <tbody>
-                            ${p.variacoes.map(v => `
-                                <tr>
-                                    <td><span class="jf-swatch" style="background:${v.cor_hex || '#999'}"></span> ${v.cor}</td>
-                                    <td>${v.tamanho}</td>
-                                    <td class="text-suave">${v.sku}</td>
-                                    <td>
-                                        <input type="text" class="form-control form-control-sm" style="width:110px" value="${v.preco_venda.toFixed(2)}"
-                                               onchange="editarRapido(${v.id}, 'preco_venda', this.value)">
-                                    </td>
-                                    <td>
-                                        <input type="number" min="0" class="form-control form-control-sm d-inline-block" style="width:80px" value="${v.quantidade}"
-                                               onchange="editarRapido(${v.id}, 'quantidade', this.value)">
-                                        ${badgeEstoque(v)}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    <details class="mt-3" open>
+                        <summary class="small text-suave" style="cursor:pointer">Variações</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="jf-tabela">
+                                <thead><tr><th>Cor</th><th>Tam.</th><th>SKU</th><th>Preço</th><th>Estoque</th></tr></thead>
+                                <tbody>
+                                ${p.variacoes.map(v => `
+                                    <tr>
+                                        <td><span class="jf-swatch" style="background:${v.cor_hex || '#999'}"></span> ${v.cor}</td>
+                                        <td>${v.tamanho}</td>
+                                        <td class="text-suave">${v.sku}</td>
+                                        <td>
+                                            <input type="text" class="form-control form-control-sm" style="width:110px" value="${v.preco_venda.toFixed(2)}"
+                                                   onchange="editarRapido(${v.id}, 'preco_venda', this.value)">
+                                        </td>
+                                        <td>
+                                            <input type="number" min="0" class="form-control form-control-sm d-inline-block" style="width:80px" value="${v.quantidade}"
+                                                   onchange="editarRapido(${v.id}, 'quantidade', this.value)">
+                                            ${badgeEstoque(v)}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
             </div>
         </div>
@@ -241,10 +303,17 @@ function renderizarProdutos() {
 async function editarRapido(variacaoId, campo, valor) {
     try {
         const body = {};
-        body[campo] = campo === 'quantidade' ? parseInt(valor) : parseFloat(valor.replace(',', '.'));
+        if (campo === 'quantidade') {
+            body.quantidade = parseInt(valor);
+            const variacaoAtual = PRODUTOS.flatMap(p => p.variacoes).find(v => v.id === variacaoId);
+            if (variacaoAtual) body.quantidade_esperada = variacaoAtual.quantidade;
+        } else {
+            body[campo] = parseFloat(valor.replace(',', '.'));
+        }
         await JF.api(`/produtos/api/variacoes/${variacaoId}/rapido`, { method: 'PATCH', body: JSON.stringify(body) });
         JF.toast('Atualizado.');
         await carregarProdutos();
+        await carregarEstatisticas();
     } catch (e) { JF.erro(e); }
 }
 
@@ -254,8 +323,108 @@ async function excluirProduto(id) {
         await JF.api(`/produtos/api/${id}`, { method: 'DELETE' });
         JF.toast('Produto excluído.');
         await carregarProdutos();
+        await carregarEstatisticas();
     } catch (e) { JF.erro(e); }
 }
+
+async function carregarEstatisticas() {
+    try {
+        const s = await JF.api('/produtos/api/stats');
+        document.getElementById('stat-pecas').textContent = s.total_pecas;
+        document.getElementById('stat-variacoes').textContent = s.total_variacoes;
+        document.getElementById('stat-estoque-baixo').textContent = s.estoque_baixo;
+        document.getElementById('stat-sem-estoque').textContent = s.sem_estoque;
+        document.getElementById('stat-valor-estoque').textContent = JF.moeda(s.valor_estoque_custo);
+    } catch (e) { /* estatísticas são só um resumo — falha aqui não deve travar a tela */ }
+}
+
+let todosExpandidos = true;
+document.getElementById('btn-expandir-tudo').addEventListener('click', () => {
+    todosExpandidos = !todosExpandidos;
+    document.querySelectorAll('#lista-produtos details').forEach(d => { d.open = todosExpandidos; });
+    document.getElementById('btn-expandir-tudo').innerHTML = todosExpandidos
+        ? '<i class="bi bi-arrows-collapse"></i> Recolher tudo'
+        : '<i class="bi bi-arrows-expand"></i> Expandir tudo';
+});
+
+// ---------- Nova Variação (cor/tamanho) num produto já existente ----------
+let nomeParaId = {};
+let nvProdutoIdSelecionado = null;
+
+async function carregarNomesProdutos() {
+    const lista = await JF.api('/produtos/api/nomes');
+    nomeParaId = {};
+    lista.forEach(item => { nomeParaId[item.nome] = item.id; });
+    document.getElementById('nv-nomes-datalist').innerHTML = lista.map(i => `<option value="${i.nome}">`).join('');
+}
+
+document.getElementById('btn-nova-variacao').addEventListener('click', async () => {
+    document.getElementById('nv-nome').value = '';
+    document.getElementById('nv-cor').value = '';
+    document.getElementById('nv-cor-hex').value = '#ec4899';
+    document.getElementById('nv-tamanho').value = '';
+    document.getElementById('nv-preco-custo').value = '';
+    document.getElementById('nv-preco-venda').value = '';
+    document.getElementById('nv-qtd').value = 0;
+    document.getElementById('nv-campos-variacao').style.display = 'none';
+    document.getElementById('nv-btn-salvar').disabled = true;
+    document.getElementById('nv-btn-ir-novo-produto').classList.add('d-none');
+    document.getElementById('nv-status').innerHTML = '';
+    nvProdutoIdSelecionado = null;
+    await carregarNomesProdutos();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-nova-variacao')).show();
+    document.getElementById('nv-nome').focus();
+});
+
+document.getElementById('nv-nome').addEventListener('input', () => {
+    const nome = document.getElementById('nv-nome').value.trim();
+    const status = document.getElementById('nv-status');
+    const campos = document.getElementById('nv-campos-variacao');
+    const btnSalvar = document.getElementById('nv-btn-salvar');
+    const btnNovo = document.getElementById('nv-btn-ir-novo-produto');
+
+    if (!nome) {
+        status.innerHTML = '';
+        campos.style.display = 'none';
+        btnSalvar.disabled = true;
+        btnNovo.classList.add('d-none');
+        nvProdutoIdSelecionado = null;
+        return;
+    }
+
+    if (nomeParaId[nome] != null) {
+        nvProdutoIdSelecionado = nomeParaId[nome];
+        status.innerHTML = '<span class="text-suave"><i class="bi bi-check-circle text-rosa"></i> Produto encontrado — a variação será adicionada a ele.</span>';
+        campos.style.display = 'flex';
+        btnSalvar.disabled = false;
+        btnNovo.classList.add('d-none');
+    } else {
+        nvProdutoIdSelecionado = null;
+        status.innerHTML = '<span class="text-amarelo"><i class="bi bi-exclamation-triangle"></i> Esse nome ainda não existe — confira se não é o mesmo produto com o nome digitado diferente. Se for mesmo novo, cadastre como produto.</span>';
+        campos.style.display = 'none';
+        btnSalvar.disabled = true;
+        btnNovo.classList.remove('d-none');
+    }
+});
+
+document.getElementById('nv-btn-salvar').addEventListener('click', async () => {
+    if (!nvProdutoIdSelecionado) return;
+    const payload = {
+        cor: document.getElementById('nv-cor').value,
+        cor_hex: document.getElementById('nv-cor-hex').value,
+        tamanho: document.getElementById('nv-tamanho').value,
+        preco_custo: document.getElementById('nv-preco-custo').value,
+        preco_venda: document.getElementById('nv-preco-venda').value,
+        quantidade: document.getElementById('nv-qtd').value,
+    };
+    try {
+        await JF.api(`/produtos/api/${nvProdutoIdSelecionado}/variacoes`, { method: 'POST', body: JSON.stringify(payload) });
+        JF.toast('Variação adicionada.');
+        bootstrap.Modal.getInstance(document.getElementById('modal-nova-variacao')).hide();
+        await carregarProdutos();
+        await carregarEstatisticas();
+    } catch (e) { JF.erro(e); }
+});
 
 function atualizarSelecao() {
     const marcados = document.querySelectorAll('.checkbox-produto:checked');
@@ -272,6 +441,19 @@ document.getElementById('btn-excluir-selecionados').addEventListener('click', as
         await JF.api('/produtos/api/excluir-em-massa', { method: 'POST', body: JSON.stringify({ ids }) });
         JF.toast('Produtos excluídos.');
         await carregarProdutos();
+        await carregarEstatisticas();
+    } catch (e) { JF.erro(e); }
+});
+
+document.getElementById('btn-zerar-estoque-selecionados').addEventListener('click', async () => {
+    const ids = Array.from(document.querySelectorAll('.checkbox-produto:checked')).map(el => parseInt(el.value));
+    if (!ids.length) return;
+    if (!(await JF.confirmar(`Zerar o estoque de todas as variações de ${ids.length} produto(s) selecionado(s)? Os produtos continuam cadastrados, só ficam sem quantidade disponível.`, { perigo: true, textoConfirmar: 'Zerar estoque' }))) return;
+    try {
+        await JF.api('/produtos/api/zerar-estoque-em-massa', { method: 'POST', body: JSON.stringify({ ids }) });
+        JF.toast('Estoque zerado.');
+        await carregarProdutos();
+        await carregarEstatisticas();
     } catch (e) { JF.erro(e); }
 });
 
@@ -316,5 +498,6 @@ document.getElementById('filtro-estoque-baixo').addEventListener('change', recar
 
 carregarCategorias();
 carregarProdutos();
+carregarEstatisticas();
 </script>
 {% endblock %}

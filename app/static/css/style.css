@@ -252,6 +252,7 @@ table.jf-tabela tbody tr:hover { background: var(--jf-bg-elevado); }
 .page-item.active .page-link { background: var(--jf-rosa); border-color: var(--jf-rosa); color: #fff; }
 
 .text-rosa { color: var(--jf-rosa-claro) !important; }
+.text-amarelo { color: var(--jf-amarelo) !important; }
 .text-suave { color: var(--jf-texto-suave) !important; }
 .bg-jf-card { background: var(--jf-bg-card) !important; }
 

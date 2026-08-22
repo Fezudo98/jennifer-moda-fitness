@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, sen
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Produto, ProdutoVariacao, ProdutoImagem, Categoria
+from app.models import Produto, ProdutoVariacao, ProdutoImagem, Categoria, VendaItem
 from app.utils import (
     token_requerido,
     admin_requerido,
@@ -172,6 +172,47 @@ def api_listar_produtos():
     return jsonify(resultado)
 
 
+@produtos_bp.route("/api/nomes", methods=["GET"])
+@token_requerido
+def api_listar_nomes_produtos():
+    """Nomes de produtos não excluídos (com o id), para autocomplete no
+    cadastro de nova variação — evita criar um produto duplicado por causa
+    de um nome digitado com pequena diferença do já cadastrado, e permite
+    localizar direto o produto a que a nova variação deve ser anexada."""
+    produtos = (
+        Produto.query.filter_by(deletado=False)
+        .order_by(Produto.nome)
+        .all()
+    )
+    return jsonify([{"id": p.id, "nome": p.nome} for p in produtos])
+
+
+@produtos_bp.route("/api/stats", methods=["GET"])
+@token_requerido
+def api_estatisticas_produtos():
+    total_pecas = Produto.query.filter_by(deletado=False).count()
+    total_variacoes = ProdutoVariacao.query.filter_by(deletado=False).count()
+    estoque_baixo = ProdutoVariacao.query.filter(
+        ProdutoVariacao.deletado == False,
+        ProdutoVariacao.quantidade > 0,
+        ProdutoVariacao.quantidade <= ProdutoVariacao.estoque_minimo,
+    ).count()
+    sem_estoque = ProdutoVariacao.query.filter(
+        ProdutoVariacao.deletado == False, ProdutoVariacao.quantidade == 0
+    ).count()
+    valor_estoque_custo = db.session.query(
+        db.func.coalesce(db.func.sum(ProdutoVariacao.preco_custo * ProdutoVariacao.quantidade), 0)
+    ).filter(ProdutoVariacao.deletado == False).scalar()
+
+    return jsonify({
+        "total_pecas": total_pecas,
+        "total_variacoes": total_variacoes,
+        "estoque_baixo": estoque_baixo,
+        "sem_estoque": sem_estoque,
+        "valor_estoque_custo": float(valor_estoque_custo),
+    })
+
+
 @produtos_bp.route("/api/<int:produto_id>", methods=["GET"])
 @token_requerido
 def api_obter_produto(produto_id):
@@ -214,6 +255,27 @@ def _validar_variacao(v, produto_nome):
     }, None
 
 
+def _criar_ou_reativar_variacao(produto_id, validado):
+    """Cria uma variação nova para o produto — ou, se já existir uma variação
+    excluída (soft delete) com o mesmo SKU determinístico (mesma combinação
+    de nome+cor+tamanho de uma peça removida antes), reaproveita esse
+    registro em vez de tentar inserir outro com o mesmo SKU, o que violaria
+    a restrição de unicidade e derrubaria a requisição com erro 500."""
+    existente_deletada = ProdutoVariacao.query.filter_by(sku=validado["sku"], deletado=True).first()
+    if existente_deletada:
+        existente_deletada.produto_id = produto_id
+        existente_deletada.deletado = False
+        for campo, valor in validado.items():
+            setattr(existente_deletada, campo, valor)
+        if not existente_deletada.codigo_barras:
+            existente_deletada.codigo_barras = proximo_codigo_barras()
+        return existente_deletada, True
+
+    variacao = ProdutoVariacao(produto_id=produto_id, codigo_barras=proximo_codigo_barras(), **validado)
+    db.session.add(variacao)
+    return variacao, False
+
+
 @produtos_bp.route("/api", methods=["POST"])
 @token_requerido
 def api_criar_produto():
@@ -245,12 +307,7 @@ def api_criar_produto():
             db.session.rollback()
             return jsonify({"erro": f"Já existe uma variação com o SKU {validado['sku']}."}), 400
 
-        variacao = ProdutoVariacao(
-            produto_id=produto.id,
-            codigo_barras=proximo_codigo_barras(),
-            **validado,
-        )
-        db.session.add(variacao)
+        _criar_ou_reativar_variacao(produto.id, validado)
 
     registrar_log("produto_criado", f"Produto '{nome}' criado com {len(variacoes_entrada)} variação(ões).")
     db.session.commit()
@@ -308,6 +365,28 @@ def api_excluir_em_massa():
     return jsonify({"ok": True, "excluidos": len(produtos)})
 
 
+@produtos_bp.route("/api/zerar-estoque-em-massa", methods=["POST"])
+@token_requerido
+def api_zerar_estoque_em_massa():
+    """Zera a quantidade de todas as variações dos produtos selecionados —
+    útil para correções de inventário ou fim de coleção, sem excluir o
+    cadastro (o produto continua existindo, só sem estoque disponível)."""
+    dados = request.get_json(silent=True) or {}
+    ids = dados.get("ids") or []
+    if not ids:
+        return jsonify({"erro": "Nenhum produto selecionado."}), 400
+
+    variacoes = ProdutoVariacao.query.filter(
+        ProdutoVariacao.produto_id.in_(ids), ProdutoVariacao.deletado == False
+    ).all()
+    for v in variacoes:
+        v.quantidade = 0
+
+    registrar_log("estoque_zerado_em_massa", f"Estoque zerado para {len(variacoes)} variação(ões) de {len(ids)} produto(s).")
+    db.session.commit()
+    return jsonify({"ok": True, "variacoes_zeradas": len(variacoes)})
+
+
 # ---------------------------------------------------------------------------
 # API - Variações
 # ---------------------------------------------------------------------------
@@ -327,9 +406,9 @@ def api_adicionar_variacao(produto_id):
     if ProdutoVariacao.query.filter_by(sku=validado["sku"], deletado=False).first():
         return jsonify({"erro": f"Já existe uma variação com essa cor/tamanho (SKU {validado['sku']})."}), 400
 
-    variacao = ProdutoVariacao(produto_id=produto.id, codigo_barras=proximo_codigo_barras(), **validado)
-    db.session.add(variacao)
-    registrar_log("variacao_criada", f"Variação {validado['sku']} adicionada ao produto '{produto.nome}'.")
+    variacao, reativada = _criar_ou_reativar_variacao(produto.id, validado)
+    acao = "variacao_reativada" if reativada else "variacao_criada"
+    registrar_log(acao, f"Variação {validado['sku']} adicionada ao produto '{produto.nome}'.")
     db.session.commit()
     return jsonify(variacao.to_dict()), 201
 
@@ -351,6 +430,23 @@ def api_atualizar_variacao(variacao_id):
     ).first()
     if conflito:
         return jsonify({"erro": f"Já existe uma variação com essa cor/tamanho (SKU {validado['sku']})."}), 400
+
+    # Se o novo SKU coincide com o de uma variação já excluída (outra peça
+    # removida antes com a mesma combinação de nome+cor+tamanho), só é
+    # seguro liberar o SKU se essa variação órfã nunca apareceu em nenhuma
+    # venda — caso contrário excluí-la de vez quebraria o histórico (regra
+    # de nunca fazer hard delete quando há venda associada).
+    orfa_deletada = ProdutoVariacao.query.filter(
+        ProdutoVariacao.sku == validado["sku"], ProdutoVariacao.deletado == True, ProdutoVariacao.id != variacao_id
+    ).first()
+    if orfa_deletada:
+        tem_historico = VendaItem.query.filter_by(variacao_id=orfa_deletada.id).first() is not None
+        if tem_historico:
+            return jsonify({
+                "erro": "Essa combinação de cor/tamanho já foi usada por uma variação excluída com vendas no histórico. "
+                        "Escolha outra cor/tamanho, ou fale com o suporte para reaproveitar o cadastro antigo."
+            }), 400
+        db.session.delete(orfa_deletada)
 
     for campo, valor in validado.items():
         setattr(variacao, campo, valor)
@@ -384,10 +480,34 @@ def api_editar_variacao_rapido(variacao_id):
             return jsonify({"erro": "Quantidade inválida."}), 400
         if quantidade < 0:
             return jsonify({"erro": "A quantidade em estoque não pode ser negativa."}), 400
-        variacao.quantidade = quantidade
+
+        if dados.get("quantidade_esperada") is not None:
+            # Trava otimista: só grava se o estoque no banco ainda for o mesmo
+            # valor que a tela mostrava quando o usuário editou. Sem isso, uma
+            # venda no PDV que baixe o estoque entre a tela carregar e o
+            # admin salvar seria silenciosamente desfeita pela edição rápida.
+            try:
+                qtd_esperada = int(dados["quantidade_esperada"])
+            except (TypeError, ValueError):
+                return jsonify({"erro": "Quantidade esperada inválida."}), 400
+
+            afetadas = ProdutoVariacao.query.filter_by(id=variacao_id, quantidade=qtd_esperada).update(
+                {"quantidade": quantidade}
+            )
+            if afetadas == 0:
+                db.session.rollback()
+                db.session.refresh(variacao)
+                return jsonify({
+                    "erro": "O estoque dessa variação mudou desde que a tela foi carregada (provavelmente uma venda). "
+                            "Atualize a página e tente de novo.",
+                    "quantidade_atual": variacao.quantidade,
+                }), 409
+        else:
+            variacao.quantidade = quantidade
 
     registrar_log("estoque_ajustado", f"Ajuste rápido na variação {variacao.sku}.")
     db.session.commit()
+    db.session.refresh(variacao)
     return jsonify(variacao.to_dict())
 
 
