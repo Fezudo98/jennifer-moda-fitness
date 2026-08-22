@@ -360,11 +360,20 @@ def api_reembolsar_venda(venda_id):
     venda.reembolsada = True
     venda.reembolsada_em = datetime.utcnow()
 
-    db.session.add(MovimentacaoCaixa(
-        tipo="saida", valor=venda.total, motivo="reembolso",
-        observacao=f"Reembolso da venda {venda.numero}.",
-        usuario_id=request.usuario_atual.id, venda_id=venda.id,
-    ))
+    # Só sai do caixa físico a parte que realmente entrou nele em dinheiro —
+    # reembolso de pagamento em PIX/cartão não retira nada da gaveta (o
+    # estorno é do banco/adquirente para o cliente), então lançar o valor
+    # total da venda como saída de caixa distorceria o saldo físico sempre
+    # que a venda não foi 100% em dinheiro.
+    valor_dinheiro = sum(
+        (p.valor for p in venda.pagamentos if p.forma == "dinheiro"), Decimal("0.00")
+    )
+    if valor_dinheiro > 0:
+        db.session.add(MovimentacaoCaixa(
+            tipo="saida", valor=valor_dinheiro, motivo="reembolso",
+            observacao=f"Reembolso da venda {venda.numero} (parte paga em dinheiro).",
+            usuario_id=request.usuario_atual.id, venda_id=venda.id,
+        ))
 
     registrar_log("venda_reembolsada", f"Venda {venda.numero} reembolsada (R$ {venda.total}).")
     db.session.commit()

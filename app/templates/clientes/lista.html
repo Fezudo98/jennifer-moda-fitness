@@ -133,10 +133,10 @@ document.getElementById('btn-salvar-cliente').addEventListener('click', async ()
 });
 
 async function excluir(id) {
-    if (!(await JF.confirmar('Excluir este cliente?', { perigo: true }))) return;
+    if (!(await JF.confirmar('Excluir este cliente? Se ele já tiver compras registradas, os dados pessoais serão removidos, mas o histórico de vendas é mantido (exigência fiscal).', { perigo: true }))) return;
     try {
-        await JF.api(`/clientes/api/${id}`, { method: 'DELETE' });
-        JF.toast('Cliente excluído.');
+        const resultado = await JF.api(`/clientes/api/${id}`, { method: 'DELETE' });
+        JF.toast(resultado.anonimizado ? 'Dados pessoais removidos. Histórico de compras preservado.' : 'Cliente excluído.');
         carregar();
     } catch (e) { JF.erro(e); }
 }

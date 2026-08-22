@@ -134,10 +134,27 @@ def api_excluir_cliente(cliente_id):
         return jsonify({"erro": "Cliente não encontrado."}), 404
 
     if Venda.query.filter_by(cliente_id=cliente_id).first():
-        return jsonify({"erro": "Este cliente possui vendas registradas e não pode ser excluído."}), 400
+        # A LGPD garante o direito ao esquecimento, mas obrigações fiscais
+        # exigem manter o histórico de vendas — por isso não apagamos o
+        # registro, só anonimizamos os dados pessoais, preservando o
+        # vínculo com as vendas já realizadas (necessário para relatórios
+        # e auditoria, sem manter dado pessoal desnecessário).
+        cliente.nome = "Cliente Removido (LGPD)"
+        cliente.telefone = None
+        cliente.cpf = None
+        cliente.rua = None
+        cliente.numero = None
+        cliente.bairro = None
+        cliente.cidade = None
+        cliente.estado = None
+        cliente.cep = None
+        cliente.complemento = None
+        registrar_log("cliente_anonimizado", f"Cliente #{cliente_id} anonimizado (LGPD) — histórico de vendas preservado.")
+        db.session.commit()
+        return jsonify({"ok": True, "anonimizado": True})
 
     nome = cliente.nome
     db.session.delete(cliente)
     registrar_log("cliente_excluido", f"Cliente '{nome}' excluído.")
     db.session.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "anonimizado": False})

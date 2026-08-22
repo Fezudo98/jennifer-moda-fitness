@@ -19,16 +19,20 @@
 let paginaAtual = 1;
 
 const ROTULOS_ACAO = {
-    login: 'Login', logout: 'Logout', venda_registrada: 'Venda registrada', venda_reembolsada: 'Venda reembolsada',
+    login: 'Login', logout: 'Logout', login_falhou: 'Tentativa de login falhou', login_bloqueado: 'Login de usuário desativado',
+    venda_registrada: 'Venda registrada', venda_reembolsada: 'Venda reembolsada',
     produto_criado: 'Produto criado', produto_editado: 'Produto editado', produto_excluido: 'Produto excluído',
-    produtos_excluidos_em_massa: 'Exclusão em massa', variacao_criada: 'Variação criada', variacao_editada: 'Variação editada',
+    produtos_excluidos_em_massa: 'Exclusão em massa', estoque_zerado_em_massa: 'Estoque zerado em massa',
+    variacao_criada: 'Variação criada', variacao_reativada: 'Variação reativada', variacao_editada: 'Variação editada',
     variacao_excluida: 'Variação excluída', estoque_ajustado: 'Estoque ajustado', categoria_criada: 'Categoria criada',
     categoria_renomeada: 'Categoria renomeada', categoria_excluida: 'Categoria excluída', imagens_adicionadas: 'Imagens adicionadas',
     cliente_criado: 'Cliente criado', cliente_editado: 'Cliente editado', cliente_excluido: 'Cliente excluído',
+    cliente_anonimizado: 'Cliente anonimizado (LGPD)',
     cupom_criado: 'Cupom criado', cupom_editado: 'Cupom editado', cupom_status_alterado: 'Status de cupom alterado',
     caixa_ajuste_manual: 'Ajuste manual de caixa', usuario_criado: 'Usuário criado', usuario_editado: 'Usuário editado',
     usuario_status_alterado: 'Status de usuário alterado', usuario_senha_redefinida: 'Senha redefinida',
     entrega_status_atualizado: 'Status de entrega atualizado',
+    comprovante_pagamento_anexado: 'Comprovante anexado', comprovante_pagamento_removido: 'Comprovante removido',
 };
 
 async function carregar(pagina = 1) {

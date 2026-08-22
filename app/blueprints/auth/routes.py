@@ -26,9 +26,17 @@ def api_login():
 
     usuario = Usuario.query.filter_by(email=email).first()
     if not usuario or not usuario.checar_senha(senha):
+        # Registra tentativas de login falhas (sem usuário associado, já que
+        # não há como saber quem realmente tentou) — ajuda a identificar
+        # tentativas de força bruta ou de adivinhação de senha no log de
+        # atividade, que hoje só mostra logins bem-sucedidos.
+        registrar_log("login_falhou", f"Tentativa de login falhou para o e-mail '{email}'.")
+        db.session.commit()
         return jsonify({"erro": "E-mail ou senha incorretos."}), 401
 
     if not usuario.ativo:
+        registrar_log("login_bloqueado", f"Tentativa de login de usuário desativado: {usuario.nome}.", usuario_id=usuario.id)
+        db.session.commit()
         return jsonify({"erro": "Este usuário está desativado. Fale com um administrador."}), 403
 
     token = gerar_token(usuario)
