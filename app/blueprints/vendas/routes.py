@@ -265,8 +265,20 @@ def api_criar_venda():
 
     for item in resultado["itens"]:
         variacao = item["variacao"]
-        variacao.quantidade -= item["quantidade"]
-        if variacao.quantidade < 0:
+        # Decremento atômico e condicional no próprio banco (em vez de ler o
+        # valor em Python, subtrair e regravar): garante que duas vendas
+        # simultâneas do último item em estoque (dois caixas, ou um
+        # duplo-clique) nunca derrubem a quantidade abaixo de zero, mesmo
+        # que ambas tenham lido o mesmo valor inicial antes de qualquer
+        # uma commitar.
+        afetadas = ProdutoVariacao.query.filter(
+            ProdutoVariacao.id == variacao.id,
+            ProdutoVariacao.quantidade >= item["quantidade"],
+        ).update(
+            {ProdutoVariacao.quantidade: ProdutoVariacao.quantidade - item["quantidade"]},
+            synchronize_session=False,
+        )
+        if afetadas == 0:
             db.session.rollback()
             return jsonify({"erro": f"Estoque insuficiente para {variacao.sku}."}), 400
 
@@ -337,9 +349,13 @@ def api_reembolsar_venda(venda_id):
         return jsonify({"erro": "Esta venda já foi reembolsada."}), 400
 
     for item in venda.itens:
-        variacao = db.session.get(ProdutoVariacao, item.variacao_id)
-        if variacao:
-            variacao.quantidade += item.quantidade
+        # Mesmo padrão de expressão SQL atômica do decremento na venda — evita
+        # perder incremento de estoque se dois reembolsos/ajustes concorrentes
+        # acontecerem sobre a mesma variação ao mesmo tempo.
+        ProdutoVariacao.query.filter(ProdutoVariacao.id == item.variacao_id).update(
+            {ProdutoVariacao.quantidade: ProdutoVariacao.quantidade + item.quantidade},
+            synchronize_session=False,
+        )
 
     venda.reembolsada = True
     venda.reembolsada_em = datetime.utcnow()

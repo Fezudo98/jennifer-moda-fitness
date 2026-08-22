@@ -222,9 +222,24 @@ def api_obter_produto(produto_id):
     return jsonify(produto.to_dict())
 
 
+def _normalizar_nome(texto):
+    """Remove espaços duplicados/nas pontas e padroniza capitalização (Title
+    Case). Evita que o mesmo produto/cor apareça cadastrado de formas
+    diferentes (' legging basic', 'LEGGING BASIC', 'Legging  Basic') — a
+    causa mais comum de catálogo bagunçado e de relatórios que não agrupam
+    corretamente a mesma peça."""
+    return " ".join((texto or "").split()).title()
+
+
+def _normalizar_tamanho(texto):
+    """Tamanhos ficam em caixa alta (P, M, GG, 42) — nunca em Title Case,
+    que deixaria 'Gg' em vez de 'GG'."""
+    return " ".join((texto or "").split()).upper()
+
+
 def _validar_variacao(v, produto_nome):
-    cor = (v.get("cor") or "").strip()
-    tamanho = (v.get("tamanho") or "").strip()
+    cor = _normalizar_nome((v.get("cor") or "").strip())
+    tamanho = _normalizar_tamanho((v.get("tamanho") or "").strip())
     if not cor or not tamanho:
         return None, "Cor e tamanho são obrigatórios em cada variação."
     try:
@@ -280,7 +295,7 @@ def _criar_ou_reativar_variacao(produto_id, validado):
 @token_requerido
 def api_criar_produto():
     dados = request.get_json(silent=True) or {}
-    nome = (dados.get("nome") or "").strip()
+    nome = _normalizar_nome(dados.get("nome"))
     if not nome:
         return jsonify({"erro": "Informe o nome do produto."}), 400
 
@@ -322,7 +337,7 @@ def api_atualizar_produto(produto_id):
         return jsonify({"erro": "Produto não encontrado."}), 404
 
     dados = request.get_json(silent=True) or {}
-    nome = (dados.get("nome") or "").strip()
+    nome = _normalizar_nome(dados.get("nome"))
     if not nome:
         return jsonify({"erro": "Informe o nome do produto."}), 400
 
