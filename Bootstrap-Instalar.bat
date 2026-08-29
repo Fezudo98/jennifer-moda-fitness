@@ -31,7 +31,12 @@ if errorlevel 1 (
 if exist "%PASTA%" (
     echo A pasta do sistema ja existe em:
     echo   %PASTA%
-    echo Pulando o download e indo direto para a instalacao.
+    echo Buscando a versao mais recente antes de continuar...
+    cd /d "%PASTA%"
+    git pull --ff-only
+    if errorlevel 1 (
+        echo [AVISO] Nao foi possivel atualizar agora. Continuando com a versao que ja esta na pasta.
+    )
 ) else (
     echo Baixando o sistema, aguarde...
     git clone "%REPO_URL%" "%PASTA%"

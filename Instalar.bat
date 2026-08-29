@@ -8,6 +8,15 @@ echo   Jennifer Moda Fitness - Instalacao
 echo ============================================================
 echo.
 
+if exist .git (
+    echo Buscando a versao mais recente antes de instalar...
+    git pull --ff-only
+    if errorlevel 1 (
+        echo [AVISO] Nao foi possivel atualizar agora. Continuando com a versao que ja esta na pasta.
+    )
+    echo.
+)
+
 where python >nul 2>nul
 if errorlevel 1 (
     echo [ERRO] Python nao foi encontrado neste computador.
