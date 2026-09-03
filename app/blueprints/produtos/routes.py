@@ -638,7 +638,6 @@ def api_excluir_imagem(imagem_id):
 
     era_capa = imagem.capa
     produto_id = imagem.produto_id
-    caminho_absoluto = os.path.join(current_app.config["UPLOAD_FOLDER"], "..", imagem.caminho)
     db.session.delete(imagem)
     db.session.flush()
 

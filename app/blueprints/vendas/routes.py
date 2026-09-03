@@ -374,8 +374,12 @@ def api_reembolsar_venda(venda_id):
     # estorno é do banco/adquirente para o cliente), então lançar o valor
     # total da venda como saída de caixa distorceria o saldo físico sempre
     # que a venda não foi 100% em dinheiro.
+    # Usa valor - troco (não só valor): o troco já saiu do caixa como uma
+    # movimentação separada no momento da venda, então o que a loja
+    # realmente ficou em dinheiro daquela venda é o valor recebido menos o
+    # troco já devolvido — não o valor bruto entregue pelo cliente.
     valor_dinheiro = sum(
-        (p.valor for p in venda.pagamentos if p.forma == "dinheiro"), Decimal("0.00")
+        (p.valor - p.troco for p in venda.pagamentos if p.forma == "dinheiro"), Decimal("0.00")
     )
     if valor_dinheiro > 0:
         db.session.add(MovimentacaoCaixa(
