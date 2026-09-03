@@ -35,7 +35,7 @@
                 margin: 0; padding: 0 2mm; max-width: none;
                 font-size: 11px; color: #000;
             }
-            .btn-imprimir, .cabecalho img { display: none; }
+            .btn-imprimir, .cabecalho img, .tela-apenas { display: none; }
             .cabecalho { margin-bottom: .5rem; }
             .cabecalho h1 { font-size: 13px; }
             .cabecalho .sub { font-size: 9px; color: #000; }
@@ -52,45 +52,82 @@
     <img src="{{ url_for('static', filename='img/logo.png') }}" onerror="this.remove()">
     <h1>Jennifer Moda Fitness</h1>
     <div class="sub">RECIBO DE VENDA</div>
+    {% if modo_teste %}<div class="sub" style="color:#555; letter-spacing:.05em;">— IMPRESSÃO DE TESTE, NÃO É VENDA —</div>{% endif %}
 </div>
 <div id="conteudo">Carregando...</div>
-<button class="btn-imprimir" onclick="window.print()">Imprimir Recibo</button>
+<button class="btn-imprimir" onclick="window.print()">Imprimir Recibo{% if modo_teste %} de Teste{% endif %}</button>
+{% if modo_teste %}
+<p class="tela-apenas" style="text-align:center; font-size:.75rem; color:#777; margin-top:1rem;">
+    Use esta página para calibrar a impressora (tamanho do papel, margens, corte automático) sem precisar registrar uma venda de verdade.
+</p>
+{% endif %}
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 <script>
-const VENDA_ID = {{ venda_id }};
+const VENDA_ID = {{ venda_id or 'null' }};
+const MODO_TESTE = {{ 'true' if modo_teste else 'false' }};
 
 function rotuloForma(forma) {
     return { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Cartão Crédito', cartao_debito: 'Cartão Débito' }[forma] || forma;
 }
 
+function renderizarRecibo(v) {
+    document.getElementById('conteudo').innerHTML = `
+        <hr>
+        <div>Venda: <strong>${v.numero}</strong></div>
+        <div>Data: ${JF.data(v.criado_em)}</div>
+        <div>Vendedor(a): ${v.vendedor_nome}</div>
+        <div>Cliente: ${v.cliente_nome}</div>
+        <hr>
+        <table>
+            ${v.itens.map(i => `
+                <tr><td colspan="2">${i.produto_nome} (${i.cor}/${i.tamanho})</td></tr>
+                <tr><td>${i.quantidade} x ${JF.moeda(i.preco_venda_unit)}</td><td style="text-align:right">${JF.moeda(i.subtotal)}</td></tr>
+            `).join('')}
+        </table>
+        <hr>
+        <div class="linha-total"><span>Subtotal</span><span>${JF.moeda(v.subtotal)}</span></div>
+        <div class="linha-total"><span>Desconto ${v.cupom_codigo ? '(' + v.cupom_codigo + ')' : ''}</span><span>- ${JF.moeda(v.desconto)}</span></div>
+        <div class="linha-total"><span>Entrega</span><span>${JF.moeda(v.entrega_taxa)}</span></div>
+        <div class="linha-total total-final"><span>TOTAL</span><span>${JF.moeda(v.total)}</span></div>
+        <hr>
+        <div><strong>Pagamento:</strong></div>
+        ${v.pagamentos.map(p => `<div class="linha-total"><span>${rotuloForma(p.forma)}${p.parcelas ? ' ' + p.parcelas + 'x' : ''}</span><span>${JF.moeda(p.valor)}</span></div>`).join('')}
+        ${v.pagamentos.some(p => p.troco > 0) ? `<div class="linha-total"><span>Troco</span><span>${JF.moeda(v.pagamentos.reduce((s,p)=>s+p.troco,0))}</span></div>` : ''}
+        ${v.entrega_tipo === 'motoboy' ? `<hr><div><strong>Entrega (Motoboy)</strong></div><div style="font-size:.75rem">${v.entrega_endereco}</div>` : ''}
+    `;
+}
+
+function vendaDeExemplo() {
+    // Usa TODOS os elementos visuais de um recibo real (vários itens, cupom,
+    // troco) de uma vez só, pra servir de folha de calibração da impressora.
+    return {
+        numero: 'TESTE-IMPRESSORA',
+        criado_em: new Date().toISOString(),
+        vendedor_nome: '{{ usuario_logado_nome or "Teste de Impressora" }}',
+        cliente_nome: 'Cliente de Teste',
+        itens: [
+            { produto_nome: 'Legging Estampada', cor: 'Preto', tamanho: 'M', quantidade: 1, preco_venda_unit: 99.9, subtotal: 99.9 },
+            { produto_nome: 'Top Fitness', cor: 'Rosa', tamanho: 'P', quantidade: 2, preco_venda_unit: 59.9, subtotal: 119.8 },
+        ],
+        subtotal: 219.7,
+        desconto: 21.97,
+        cupom_codigo: 'TESTE10',
+        entrega_taxa: 0,
+        entrega_tipo: 'retirada',
+        total: 197.73,
+        pagamentos: [{ forma: 'dinheiro', valor: 200, parcelas: null, troco: 2.27 }],
+    };
+}
+
 async function carregar() {
+    if (MODO_TESTE) {
+        renderizarRecibo(vendaDeExemplo());
+        return;
+    }
     try {
         const v = await JF.api(`/vendas/api/${VENDA_ID}`);
-        document.getElementById('conteudo').innerHTML = `
-            <hr>
-            <div>Venda: <strong>${v.numero}</strong></div>
-            <div>Data: ${JF.data(v.criado_em)}</div>
-            <div>Vendedor(a): ${v.vendedor_nome}</div>
-            <div>Cliente: ${v.cliente_nome}</div>
-            <hr>
-            <table>
-                ${v.itens.map(i => `
-                    <tr><td colspan="2">${i.produto_nome} (${i.cor}/${i.tamanho})</td></tr>
-                    <tr><td>${i.quantidade} x ${JF.moeda(i.preco_venda_unit)}</td><td style="text-align:right">${JF.moeda(i.subtotal)}</td></tr>
-                `).join('')}
-            </table>
-            <hr>
-            <div class="linha-total"><span>Subtotal</span><span>${JF.moeda(v.subtotal)}</span></div>
-            <div class="linha-total"><span>Desconto ${v.cupom_codigo ? '(' + v.cupom_codigo + ')' : ''}</span><span>- ${JF.moeda(v.desconto)}</span></div>
-            <div class="linha-total"><span>Entrega</span><span>${JF.moeda(v.entrega_taxa)}</span></div>
-            <div class="linha-total total-final"><span>TOTAL</span><span>${JF.moeda(v.total)}</span></div>
-            <hr>
-            <div><strong>Pagamento:</strong></div>
-            ${v.pagamentos.map(p => `<div class="linha-total"><span>${rotuloForma(p.forma)}${p.parcelas ? ' ' + p.parcelas + 'x' : ''}</span><span>${JF.moeda(p.valor)}</span></div>`).join('')}
-            ${v.pagamentos.some(p => p.troco > 0) ? `<div class="linha-total"><span>Troco</span><span>${JF.moeda(v.pagamentos.reduce((s,p)=>s+p.troco,0))}</span></div>` : ''}
-            ${v.entrega_tipo === 'motoboy' ? `<hr><div><strong>Entrega (Motoboy)</strong></div><div style="font-size:.75rem">${v.entrega_endereco}</div>` : ''}
-        `;
+        renderizarRecibo(v);
     } catch (e) {
         document.getElementById('conteudo').innerHTML = '<p>Não foi possível carregar o recibo.</p>';
     }

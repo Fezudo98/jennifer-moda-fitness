@@ -34,6 +34,7 @@
             <a href="{{ url_for('vendas.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint == 'vendas.pagina_lista' }}"><i class="bi bi-receipt"></i> Vendas Realizadas</a>
             <a href="{{ url_for('cupons.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('cupons.') }}"><i class="bi bi-ticket-perforated"></i> Cupons</a>
             <a href="{{ url_for('entregas.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('entregas.') }}"><i class="bi bi-bicycle"></i> Entregas</a>
+            <a href="{{ url_for('vendas.pagina_teste_impressora') }}" target="_blank" class="jf-nav-link {{ 'ativo' if request.endpoint == 'vendas.pagina_teste_impressora' }}"><i class="bi bi-printer"></i> Testar Impressora</a>
 
             <div class="jf-nav-secao">Clientes</div>
             <a href="{{ url_for('clientes.pagina_lista') }}" class="jf-nav-link {{ 'ativo' if request.endpoint and request.endpoint.startswith('clientes.') }}"><i class="bi bi-people"></i> Clientes</a>

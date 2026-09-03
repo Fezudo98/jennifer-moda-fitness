@@ -59,6 +59,15 @@ def pagina_recibo(venda_id):
     return render_template("vendas/recibo.html", venda_id=venda_id)
 
 
+@vendas_bp.route("/teste-impressora")
+@pagina_login_requerida
+def pagina_teste_impressora():
+    """Recibo com dados de exemplo (não fica registrado como venda), pra
+    calibrar tamanho de papel/margens da impressora térmica sem precisar
+    inventar uma venda de verdade."""
+    return render_template("vendas/recibo.html", venda_id=None, modo_teste=True)
+
+
 # ---------------------------------------------------------------------------
 # Cálculo de totais (compartilhado entre pré-visualização e criação)
 # ---------------------------------------------------------------------------
