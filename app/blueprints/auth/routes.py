@@ -9,7 +9,17 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 @auth_bp.route("/login", methods=["GET"])
 def pagina_login():
-    if session.get("usuario_id"):
+    if request.args.get("expirada") == "1":
+        # O token de API (usado nas chamadas JS, 24h -- JWT_EXPIRATION em
+        # config.py) expira bem antes do cookie de sessão do navegador
+        # (semanas, padrão do Flask). Sem isso, quem chegava aqui com token
+        # expirado mas cookie ainda "válido" era jogado direto de volta pro
+        # /home (pelo `elif` abaixo) -- que tentava usar o token velho de
+        # novo, tomava 401 de novo, e voltava pra cá: um vaivém instantâneo
+        # e confuso em vez de simplesmente pedir login de novo. Limpa a
+        # sessão pra garantir que a tela de login realmente apareça.
+        session.clear()
+    elif session.get("usuario_id"):
         return redirect(url_for("home.pagina_home"))
     return render_template("auth/login.html", proximo=request.args.get("proximo") or "")
 
