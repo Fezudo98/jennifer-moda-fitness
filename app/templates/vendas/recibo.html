@@ -21,19 +21,28 @@
         .rodape { text-align: center; font-size: .72rem; margin-top: 1.5rem; color: #555; }
         .btn-imprimir { display: block; width: 100%; padding: .7rem; background: #e91e8c; color: #fff; border: none; border-radius: 8px; font-weight: bold; margin-top: 1.5rem; cursor: pointer; }
 
-        /* Impressão em impressora térmica de bobina 70mm: sem isso, o
-           navegador imprime como se fosse papel A4/Carta comum — ou corta
-           o conteúdo, ou desperdiça bobina em cada recibo. */
+        /* Impressão em impressora térmica de bobina 58mm (impressora real
+           usada aqui é uma POS-58, confirmado pela página de teste do
+           Windows -- não 70mm como estava antes): sem isso, o navegador
+           imprime como se fosse papel A4/Carta comum, ou o conteúdo fica
+           largo demais pra bobina e é cortado/desalinhado. */
         @media print {
             /* "auto" não pode ser combinado com um comprimento fixo em
                @page size — por isso a altura é um valor bem generoso
                (a maioria dos drivers de impressora térmica corta a bobina
                no fim do conteúdo real, ignorando o espaço "sobrando"). */
-            @page { size: 70mm 1000mm; margin: 0; }
-            html, body { width: 70mm; }
+            @page { size: 58mm 1000mm; margin: 0; }
+            html, body { width: 58mm; }
             body {
                 margin: 0; padding: 0 2mm; max-width: none;
                 font-size: 11px; color: #000;
+                /* Texto fino em fonte comum sai claro/apagado em impressora
+                   térmica via navegador (o anti-aliasing gera bordas
+                   acinzentadas que a impressora não reproduz bem) -- a
+                   página de teste do Windows imprime forte porque usa a
+                   fonte nativa do driver, não passa por isso. Negrito
+                   força tinta mais concentrada por caractere. */
+                font-weight: 600;
             }
             .btn-imprimir, .cabecalho img { display: none; }
             .cabecalho { margin-bottom: .5rem; }
@@ -43,7 +52,7 @@
             table { font-size: 10px; }
             .linha-total { font-size: 10px; }
             .total-final { font-size: 12px; }
-            .rodape { font-size: 9px; margin-top: .75rem; }
+            .rodape { font-size: 9px; margin-top: .75rem; color: #000; }
         }
     </style>
 </head>
