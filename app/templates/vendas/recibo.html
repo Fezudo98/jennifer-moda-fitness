@@ -21,20 +21,22 @@
         .rodape { text-align: center; font-size: .72rem; margin-top: 1.5rem; color: #555; }
         .btn-imprimir { display: block; width: 100%; padding: .7rem; background: #e91e8c; color: #fff; border: none; border-radius: 8px; font-weight: bold; margin-top: 1.5rem; cursor: pointer; }
 
-        /* Impressão em impressora térmica de bobina 58mm (impressora real
-           usada aqui é uma POS-58, confirmado pela página de teste do
-           Windows -- não 70mm como estava antes): sem isso, o navegador
-           imprime como se fosse papel A4/Carta comum, ou o conteúdo fica
-           largo demais pra bobina e é cortado/desalinhado. */
+        /* Impressão em impressora térmica POS-58 (confirmado pela página de
+           teste do Windows). "58mm" é a largura do ROLO de papel, não da
+           área impressa -- a cabeça de impressão de uma POS-58 real cobre
+           só uns 48mm (a bobina tem uma margem de guia sem tinta de cada
+           lado). Usar 58mm aqui cortava o final de cada valor/linha (ex.:
+           "R$ 99,90" saía "R$ 99,") porque o conteúdo calculado pra 58mm
+           ficava mais largo que a área que a impressora de fato cobre. */
         @media print {
             /* "auto" não pode ser combinado com um comprimento fixo em
                @page size — por isso a altura é um valor bem generoso
                (a maioria dos drivers de impressora térmica corta a bobina
                no fim do conteúdo real, ignorando o espaço "sobrando"). */
-            @page { size: 58mm 1000mm; margin: 0; }
-            html, body { width: 58mm; }
+            @page { size: 48mm 1000mm; margin: 0; }
+            html, body { width: 48mm; }
             body {
-                margin: 0; padding: 0 2mm; max-width: none;
+                margin: 0; padding: 0 1mm; max-width: none;
                 font-size: 11px; color: #000;
                 /* Texto fino em fonte comum sai claro/apagado em impressora
                    térmica via navegador (o anti-aliasing gera bordas
