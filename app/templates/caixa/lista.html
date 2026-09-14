@@ -14,7 +14,10 @@
         <input type="date" id="data-fim" class="form-control" style="max-width:160px">
         <button class="btn btn-jf-outline" id="btn-filtrar"><i class="bi bi-funnel"></i></button>
     </div>
-    <button class="btn btn-jf" id="btn-nova-mov"><i class="bi bi-plus-lg"></i> Novo Lançamento</button>
+    <div class="d-flex flex-wrap gap-2">
+        <button class="btn btn-danger" id="btn-retirar"><i class="bi bi-cash-stack"></i> Retirar Dinheiro do Caixa</button>
+        <button class="btn btn-jf-outline" id="btn-nova-mov"><i class="bi bi-plus-lg"></i> Outro Lançamento</button>
+    </div>
 </div>
 
 <div class="table-responsive">
@@ -28,7 +31,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Novo Lançamento Manual</h5>
+                <h5 class="modal-title" id="modal-mov-titulo">Novo Lançamento Manual</h5>
                 <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -92,7 +95,18 @@ async function carregar() {
 }
 
 document.getElementById('btn-filtrar').addEventListener('click', carregar);
+
+document.getElementById('btn-retirar').addEventListener('click', () => {
+    document.getElementById('modal-mov-titulo').textContent = 'Retirar Dinheiro do Caixa (Sangria)';
+    document.getElementById('m-tipo').value = 'saida';
+    document.getElementById('m-motivo').value = 'sangria';
+    document.getElementById('m-valor').value = '';
+    document.getElementById('m-observacao').value = '';
+    modal.show();
+});
+
 document.getElementById('btn-nova-mov').addEventListener('click', () => {
+    document.getElementById('modal-mov-titulo').textContent = 'Novo Lançamento Manual';
     document.getElementById('m-tipo').value = 'entrada';
     document.getElementById('m-motivo').value = 'ajuste';
     document.getElementById('m-valor').value = '';
