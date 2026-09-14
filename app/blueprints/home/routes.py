@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from decimal import Decimal
 
 from flask import Blueprint, render_template
 from sqlalchemy import func
@@ -13,7 +14,7 @@ home_bp = Blueprint("home", __name__)
 def calcular_saldo_caixa():
     entradas = db.session.query(func.coalesce(func.sum(MovimentacaoCaixa.valor), 0)).filter_by(tipo="entrada").scalar()
     saidas = db.session.query(func.coalesce(func.sum(MovimentacaoCaixa.valor), 0)).filter_by(tipo="saida").scalar()
-    return float(entradas) - float(saidas)
+    return float(Decimal(entradas) - Decimal(saidas))
 
 
 @home_bp.route("/home")
