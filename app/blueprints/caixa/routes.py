@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 from flask import Blueprint, render_template, request, jsonify
 from sqlalchemy import func
@@ -12,10 +13,15 @@ caixa_bp = Blueprint("caixa", __name__, url_prefix="/caixa")
 MOTIVOS_MANUAIS = {"sangria", "despesa", "ajuste"}
 
 
-def calcular_saldo():
+def calcular_saldo() -> Decimal:
+    """Retorna o saldo em Decimal. Nunca passa por float antes da subtração:
+    isso evitava que a lojista retirasse o saldo integral do caixa, pois o
+    valor exibido na tela (arredondado) podia ficar ligeiramente maior do
+    que o saldo em ponto flutuante usado na validação, disparando
+    incorretamente o erro de saldo insuficiente."""
     entradas = db.session.query(func.coalesce(func.sum(MovimentacaoCaixa.valor), 0)).filter_by(tipo="entrada").scalar()
     saidas = db.session.query(func.coalesce(func.sum(MovimentacaoCaixa.valor), 0)).filter_by(tipo="saida").scalar()
-    return float(entradas) - float(saidas)
+    return Decimal(entradas) - Decimal(saidas)
 
 
 @caixa_bp.route("")
@@ -39,7 +45,7 @@ def api_listar_movimentacoes():
 
     movimentacoes = query.order_by(MovimentacaoCaixa.criado_em.desc()).limit(500).all()
     return jsonify({
-        "saldo": calcular_saldo(),
+        "saldo": float(calcular_saldo()),
         "movimentacoes": [m.to_dict() for m in movimentacoes],
     })
 
@@ -61,7 +67,7 @@ def api_criar_movimentacao():
         return jsonify({"erro": "A observação é obrigatória para lançamentos manuais de caixa."}), 400
 
     try:
-        valor = float(parse_decimal_br(dados.get("valor")))
+        valor = parse_decimal_br(dados.get("valor")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except (TypeError, ValueError, ValorInvalidoError):
         return jsonify({"erro": "Informe um valor válido."}), 400
     if valor <= 0:
