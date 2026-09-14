@@ -329,6 +329,62 @@ def api_criar_produto():
     return jsonify(produto.to_dict()), 201
 
 
+def _aplicar_variacoes_produto(produto, variacoes_entrada):
+    """Valida e aplica, na mesma transação da edição do produto, uma lista de
+    variações novas e/ou existentes — mesma regra de cada endpoint dedicado
+    (api_adicionar_variacao / api_atualizar_variacao), só que em lote. Isso
+    permite que a tela de edição salve produto + variações numa única
+    requisição, como a criação já faz, em vez de uma requisição por
+    variação: numa rede instável, cada requisição extra é mais uma chance de
+    falhar no meio do salvamento e deixar o produto com dados pela metade.
+    Retorna uma mensagem de erro (str) se algo for inválido, ou None se tudo
+    foi aplicado com sucesso."""
+    skus_usados = set()
+    for v in variacoes_entrada:
+        validado, erro = _validar_variacao(v, produto.nome)
+        if erro:
+            return erro
+        if validado["sku"] in skus_usados:
+            return f"Cor/tamanho duplicado nas variações informadas: {validado['cor']} / {validado['tamanho']}."
+        skus_usados.add(validado["sku"])
+
+        variacao_id = v.get("id")
+        if variacao_id:
+            variacao = db.session.get(ProdutoVariacao, variacao_id)
+            if not variacao or variacao.deletado or variacao.produto_id != produto.id:
+                return "Variação não encontrada."
+
+            conflito = ProdutoVariacao.query.filter(
+                ProdutoVariacao.sku == validado["sku"], ProdutoVariacao.deletado == False,
+                ProdutoVariacao.id != variacao_id,
+            ).first()
+            if conflito:
+                return f"Já existe uma variação com essa cor/tamanho (SKU {validado['sku']})."
+
+            orfa_deletada = ProdutoVariacao.query.filter(
+                ProdutoVariacao.sku == validado["sku"], ProdutoVariacao.deletado == True,
+                ProdutoVariacao.id != variacao_id,
+            ).first()
+            if orfa_deletada:
+                tem_historico = VendaItem.query.filter_by(variacao_id=orfa_deletada.id).first() is not None
+                if tem_historico:
+                    return (
+                        "Essa combinação de cor/tamanho já foi usada por uma variação excluída com vendas no "
+                        "histórico. Escolha outra cor/tamanho, ou fale com o suporte para reaproveitar o "
+                        "cadastro antigo."
+                    )
+                db.session.delete(orfa_deletada)
+
+            for campo, valor in validado.items():
+                setattr(variacao, campo, valor)
+        else:
+            if ProdutoVariacao.query.filter_by(sku=validado["sku"], deletado=False).first():
+                return f"Já existe uma variação com essa cor/tamanho (SKU {validado['sku']})."
+            _criar_ou_reativar_variacao(produto.id, validado)
+
+    return None
+
+
 @produtos_bp.route("/api/<int:produto_id>", methods=["PUT"])
 @token_requerido
 def api_atualizar_produto(produto_id):
@@ -344,6 +400,16 @@ def api_atualizar_produto(produto_id):
     produto.nome = nome
     produto.categoria_id = dados.get("categoria_id") or None
     produto.descricao = dados.get("descricao")
+
+    variacoes_entrada = dados.get("variacoes")
+    if variacoes_entrada is not None:
+        if not variacoes_entrada:
+            db.session.rollback()
+            return jsonify({"erro": "Adicione ao menos uma variação (cor/tamanho) para o produto."}), 400
+        erro = _aplicar_variacoes_produto(produto, variacoes_entrada)
+        if erro:
+            db.session.rollback()
+            return jsonify({"erro": erro}), 400
 
     registrar_log("produto_editado", f"Produto '{nome}' (#{produto.id}) editado.")
     db.session.commit()
