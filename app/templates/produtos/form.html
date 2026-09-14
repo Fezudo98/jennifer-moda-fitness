@@ -277,14 +277,6 @@ document.getElementById('btn-salvar').addEventListener('click', async () => {
     try {
         if (PRODUTO_ID) {
             await JF.api(`/produtos/api/${PRODUTO_ID}`, { method: 'PUT', body: JSON.stringify(payload) });
-            // sincroniza variações: existentes via PUT, novas via POST
-            for (const v of payload.variacoes) {
-                if (v.id) {
-                    await JF.api(`/produtos/api/variacoes/${v.id}`, { method: 'PUT', body: JSON.stringify(v) });
-                } else {
-                    await JF.api(`/produtos/api/${PRODUTO_ID}/variacoes`, { method: 'POST', body: JSON.stringify(v) });
-                }
-            }
             JF.toast('Produto atualizado.');
             await carregarProduto();
         } else {
